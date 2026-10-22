@@ -15,6 +15,8 @@ func TestForwardedPublicClients(t *testing.T) {
 	st, _ := store.Open(t.TempDir())
 	web := testWeb()
 	web["share.js"] = &fstest.MapFile{Data: []byte("share")}
+	web["palettes.css"] = &fstest.MapFile{Data: []byte(":root{}")}
+	web["app.css"] = &fstest.MapFile{Data: []byte(":root{}")}
 	s := &Server{Store: st, Web: web, AllowedHosts: []string{"shartifacts.example.com"}, ShareOrigin: "https://share.example.com"}
 	h := s.Handler()
 	for _, tc := range []struct {
@@ -38,6 +40,10 @@ func TestForwardedPublicClients(t *testing.T) {
 		// The share hostname is public by design.
 		{"share page", "share.example.com", "/s/nope", "X-Forwarded-For", "203.0.113.9", false, 404},
 		{"share page script", "share.example.com", "/share.js", "X-Forwarded-For", "203.0.113.9", false, 200},
+		// Share pages follow the viewer's palette, so its stylesheet is public too; the
+		// workspace's own stylesheets are not.
+		{"share page palettes", "share.example.com", "/palettes.css", "X-Forwarded-For", "203.0.113.9", false, 200},
+		{"workspace stylesheet", "share.example.com", "/app.css", "X-Forwarded-For", "203.0.113.9", false, 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s.AuthProxy = tc.authProxy

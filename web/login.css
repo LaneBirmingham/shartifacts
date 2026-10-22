@@ -24,7 +24,7 @@ body {
 .login .brand svg {
   width: 22px;
   height: 22px;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 .login-card {
   border: 1px solid var(--hairline);

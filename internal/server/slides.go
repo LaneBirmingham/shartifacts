@@ -7,8 +7,8 @@ package server
 // URL hash. Printing gives one slide per page. A slide holding only an h1 and up to two
 // short paragraphs becomes a centered title slide.
 const slidesDeck = `<style>
-:root{--canvas:#faf9f5;--ink:#141413;--body:#3d3d3a;--muted:#6c6a64;--primary:#cc785c;--hairline:#e6dfd8;--card:#efe9de;--display:Copernicus,"Tiempos Headline","Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;--sans:StyreneB,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-html,body{height:100%;margin:0;background:#1c1b19;overflow:hidden}
+:root{--canvas:#f9f8f6;--ink:#1a1716;--body:#403b38;--muted:#6e6863;--primary:#b5523b;--hairline:#e6e0d9;--card:#ebe6e0;--display:"Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+html,body{height:100%;margin:0;background:#1c1a19;overflow:hidden}
 #deck{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform-origin:center}
 .slide{position:absolute;inset:0;display:none;box-sizing:border-box;padding:72px 96px;background:var(--canvas);color:var(--body);font:28px/1.45 var(--sans);overflow:hidden}
 .slide.active,.measuring .slide{display:flex;flex-direction:column}.measuring .slide:not(.active){visibility:hidden}
@@ -17,16 +17,16 @@ html,body{height:100%;margin:0;background:#1c1b19;overflow:hidden}
 .slide p,.slide ul,.slide ol{margin:0 0 20px}.slide li{margin:6px 0}.slide li::marker{color:var(--primary)}
 .slide a{color:var(--primary)}.slide strong{color:var(--ink)}
 .slide img,.slide svg,.slide video{max-width:100%;max-height:440px;object-fit:contain}
-.slide pre{background:#181715;color:#faf9f5;border-radius:12px;padding:24px 28px;font-size:20px;line-height:1.5;overflow:auto;white-space:pre}
+.slide pre{background:#1c1a19;color:#f9f8f6;border-radius:12px;padding:24px 28px;font-size:20px;line-height:1.5;overflow:auto;white-space:pre}
 .slide pre code.hljs{color:inherit}.slide pre.mermaid{background:none;color:inherit;text-align:center}
 .slide code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85em}
 .slide table{border-collapse:collapse;font-size:22px}.slide td,.slide th{border-bottom:1px solid var(--hairline);padding:10px 16px;text-align:left}
 .slide blockquote{margin:0;padding-left:28px;border-left:4px solid var(--primary);font-family:var(--display);font-size:40px;color:var(--ink)}
 .slide.title{justify-content:center;text-align:center}.slide.title h1{font-size:96px}.slide.title p{color:var(--muted);font-size:32px}
 .notes{display:none}
-#bar{position:fixed;left:0;right:0;bottom:0;height:4px;background:#ffffff1f}#progress{height:100%;background:#cc785c;transition:width .2s}
-#count{position:fixed;right:14px;bottom:12px;font:12px/1 var(--sans);color:#a8a49c;letter-spacing:.06em}
-#speaker{position:fixed;left:12px;right:12px;bottom:16px;max-height:30%;overflow:auto;background:#141312ee;color:#f5f2ec;font:16px/1.5 var(--sans);padding:14px 18px;border-radius:10px;display:none}
+#bar{position:fixed;left:0;right:0;bottom:0;height:4px;background:#ffffff1f}#progress{height:100%;background:#b5523b;transition:width .2s}
+#count{position:fixed;right:14px;bottom:12px;font:12px/1 var(--sans);color:#a69e98;letter-spacing:.06em}
+#speaker{position:fixed;left:12px;right:12px;bottom:16px;max-height:30%;overflow:auto;background:#141312ee;color:#f5f1ee;font:16px/1.5 var(--sans);padding:14px 18px;border-radius:10px;display:none}
 body.show-notes #speaker{display:block}
 @media print{@page{size:1280px 720px;margin:0}html,body{height:auto;overflow:visible;background:none}#deck{position:static;transform:none!important}.slide{position:relative;display:flex!important;flex-direction:column;break-after:page;width:1280px;height:720px}#bar,#count,#speaker{display:none!important}}
 </style><div id="deck"></div><div id="bar"><div id="progress"></div></div><div id="count"></div><div id="speaker"></div>

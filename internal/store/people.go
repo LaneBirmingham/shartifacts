@@ -25,7 +25,7 @@ type Person struct {
 }
 
 // Contrast-safe in light and dark, like Claude's shell palette.
-var personColors = []string{"#cc785c", "#5db8a6", "#6a8fd8", "#c26aa6", "#d4a017", "#5db872", "#9a7bd1", "#d0694d", "#4aa3c4", "#8c9a3a"}
+var personColors = []string{"#b5523b", "#5db8a6", "#6a8fd8", "#c26aa6", "#d4a017", "#5db872", "#9a7bd1", "#d0694d", "#4aa3c4", "#8c9a3a"}
 
 func (s *Store) peoplePath() string { return filepath.Join(s.dir, "meta", "people.json") }
 

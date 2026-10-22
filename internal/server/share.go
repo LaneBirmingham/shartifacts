@@ -81,7 +81,7 @@ func sharePublic(r *http.Request) bool {
 		}
 	}
 	switch p {
-	case "/runtime.js", "/bridge.js", "/icons.js", "/share.js", "/theme.js", "/share.css", "/view.css", "/design-system.css", "/dark.css", "/favicon.svg":
+	case "/runtime.js", "/bridge.js", "/icons.js", "/share.js", "/theme.js", "/share.css", "/view.css", "/design-system.css", "/dark.css", "/palettes.css", "/favicon.svg":
 		return true
 	}
 	return false

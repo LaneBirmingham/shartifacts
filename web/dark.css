@@ -1,24 +1,25 @@
-/* The workspace's light/dark theme. theme.js sets data-theme from the saved choice or the
-   system's. Only the app's own pages load this; the design system given to agents for
-   artifacts stays as it is. */
+/* The workspace's dark theme for the default palette (palettes.css has the others').
+   theme.js sets data-theme from the saved choice or the system's. Only the app's own
+   pages load this; the design system given to agents for artifacts stays light. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #1c1b19;
-  --surface-soft: #232220;
-  --surface-card: #2a2825;
-  --surface-cream-strong: #353230;
-  --hairline: #3a3733;
-  --hairline-soft: #2f2c29;
-  --primary-disabled: #3a3733;
-  --ink: #f5f2ec;
-  --body-strong: #e8e4dc;
-  --body: #cfcac0;
-  --muted: #a8a49c;
-  --muted-soft: #8e8b82;
-  --surface-dark: #141312;
-  --surface-dark-soft: #181715;
-  --surface-dark-elevated: #2a2825;
-  --focus-ring: 0 0 0 3px rgb(204 120 92 / 30%);
+  --canvas: #1c1a19;
+  --surface-soft: #232120;
+  --surface-card: #2b2826;
+  --surface-cream-strong: #36322f;
+  --hairline: #3c3734;
+  --hairline-soft: #2f2b29;
+  --primary-disabled: #3c3734;
+  --primary-text: #e8917a;
+  --ink: #f5f1ee;
+  --body-strong: #e9e3df;
+  --body: #cec6c1;
+  --muted: #a69e98;
+  --muted-soft: #8f8882;
+  --surface-dark: #141211;
+  --surface-dark-soft: #1a1817;
+  --surface-dark-elevated: #2b2826;
+  --focus-ring: 0 0 0 3px rgb(181 82 59 / 30%);
   --warning-text: #e3b341;
 }
 :root[data-theme="dark"] #toast {

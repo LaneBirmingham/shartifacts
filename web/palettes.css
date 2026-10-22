@@ -1,0 +1,97 @@
+/* The workspace's other palettes, picked under Theme in the sidebar menu. theme.js sets
+   data-palette from the saved choice; Terracotta, the default, is design-system.css and
+   dark.css themselves. Each palette sets the same tokens in light and dark, so neither
+   mode leaks the other's (the dark rules win by specificity, whatever the load order).
+   Only the app's own pages load this; artifacts keep the default design system. */
+:root[data-palette="harbour"] {
+  --canvas: #f8f7f3;
+  --primary: #2c5d8f;
+  --primary-active: #204872;
+  --primary-disabled: #e1e0d9;
+  --primary-text: var(--primary);
+  --surface-soft: #f0efea;
+  --surface-card: #e8e7e0;
+  --surface-cream-strong: #dedfd8;
+  --surface-dark: #171a1f;
+  --surface-dark-elevated: #262a30;
+  --surface-dark-soft: #1e2126;
+  --hairline: #e1e0d9;
+  --hairline-soft: #e9e8e2;
+  --ink: #14161a;
+  --body-strong: #23262c;
+  --body: #3a3e46;
+  --muted: #666a72;
+  --muted-soft: #8a8e95;
+  --on-dark: #f8f7f3;
+  --on-dark-soft: #9aa1ab;
+  --focus-ring: 0 0 0 3px rgb(44 93 143 / 15%);
+}
+:root[data-palette="harbour"][data-theme="dark"] {
+  --canvas: #181a1e;
+  --primary: #3f74aa;
+  --primary-active: #2c5d8f;
+  --primary-disabled: #363b43;
+  --primary-text: #8db7e3;
+  --surface-soft: #1e2126;
+  --surface-card: #262a30;
+  --surface-cream-strong: #30353c;
+  --surface-dark: #111317;
+  --surface-dark-elevated: #262a30;
+  --surface-dark-soft: #15181c;
+  --hairline: #363b43;
+  --hairline-soft: #2b2f35;
+  --ink: #eef1f5;
+  --body-strong: #dde2e9;
+  --body: #c3c9d2;
+  --muted: #9aa1ab;
+  --muted-soft: #868c96;
+  --on-dark: #eef1f5;
+  --on-dark-soft: #9aa1ab;
+  --focus-ring: 0 0 0 3px rgb(63 116 170 / 35%);
+}
+:root[data-palette="sage"] {
+  --canvas: #f8f7f2;
+  --primary: #4a7a60;
+  --primary-active: #38604b;
+  --primary-disabled: #e2e0d5;
+  --primary-text: var(--primary);
+  --surface-soft: #f1f0e8;
+  --surface-card: #e9e8dd;
+  --surface-cream-strong: #e1e0d2;
+  --surface-dark: #1a1d1a;
+  --surface-dark-elevated: #272a26;
+  --surface-dark-soft: #1f221f;
+  --hairline: #e2e0d5;
+  --hairline-soft: #eae9e0;
+  --ink: #161815;
+  --body-strong: #262824;
+  --body: #3c3f3a;
+  --muted: #686b64;
+  --muted-soft: #8b8e86;
+  --on-dark: #f8f7f2;
+  --on-dark-soft: #9ea59a;
+  --focus-ring: 0 0 0 3px rgb(74 122 96 / 15%);
+}
+:root[data-palette="sage"][data-theme="dark"] {
+  --canvas: #191b19;
+  --primary: #4a7a60;
+  --primary-active: #38604b;
+  --primary-disabled: #353a34;
+  --primary-text: #8cc2a3;
+  --surface-soft: #1f221f;
+  --surface-card: #272a26;
+  --surface-cream-strong: #30342f;
+  --surface-dark: #121412;
+  --surface-dark-elevated: #272a26;
+  --surface-dark-soft: #161816;
+  --hairline: #353a34;
+  --hairline-soft: #2a2e29;
+  --ink: #eff2ec;
+  --body-strong: #e0e5dc;
+  --body: #c6ccc1;
+  --muted: #9ea59a;
+  --muted-soft: #868c83;
+  --on-dark: #eff2ec;
+  --on-dark-soft: #9ea59a;
+  --focus-ring: 0 0 0 3px rgb(74 122 96 / 35%);
+}
