@@ -1,6 +1,6 @@
 /* Shared by the workspace and the MCP get_design_system authoring tool. */
-/* Open substitutes for Copernicus, StyreneB and the code face, served by shartifacts.
-   Cormorant Garamond ships its documented 500 cut, which also covers weight 400. */
+/* The design system's open type, served by shartifacts. Cormorant Garamond ships its
+   documented 500 cut, which also covers weight 400. */
 @font-face {
   font-family: "Inter";
   src: url("/vendor/fonts/inter.woff2") format("woff2");
@@ -30,37 +30,40 @@
   font-display: swap;
 }
 :root {
-  --canvas: #faf9f5;
-  --primary: #cc785c;
-  --primary-active: #a9583e;
-  --primary-disabled: #e6dfd8;
-  --accent-teal: #5db8a6;
-  --accent-amber: #e8a55a;
-  --surface-soft: #f5f0e8;
-  --surface-card: #efe9de;
-  --surface-cream-strong: #e8e0d2;
-  --surface-dark: #181715;
-  --surface-dark-elevated: #252320;
-  --surface-dark-soft: #1f1e1b;
-  --hairline: #e6dfd8;
-  --hairline-soft: #ebe6df;
-  --ink: #141413;
-  --body-strong: #252523;
-  --body: #3d3d3a;
-  --muted: #6c6a64;
-  --muted-soft: #8e8b82;
+  /* Terracotta: a fired-brick primary on greige paper. The workspace's other palettes
+     (palettes.css) override these; artifacts always get this one. */
+  --canvas: #f9f8f6;
+  --primary: #b5523b;
+  --primary-active: #9c4330;
+  --primary-disabled: #e6e0d9;
+  /* Primary as text (links, emphasis). The same as --primary on light paper; dark
+     themes lighten it, since a fill dark enough for white text is too dark to read on. */
+  --primary-text: var(--primary);
+  --accent-slate: #5b7fa6;
+  --accent-olive: #9a9a4a;
+  --surface-soft: #f2efeb;
+  --surface-card: #ebe6e0;
+  --surface-cream-strong: #e3dcd4;
+  --surface-dark: #1c1a19;
+  --surface-dark-elevated: #2b2826;
+  --surface-dark-soft: #232120;
+  --hairline: #e6e0d9;
+  --hairline-soft: #ece8e3;
+  --ink: #1a1716;
+  --body-strong: #2a2624;
+  --body: #403b38;
+  --muted: #6e6863;
+  --muted-soft: #8f8882;
   --on-primary: #ffffff;
-  --on-dark: #faf9f5;
-  --on-dark-soft: #a09d96;
+  --on-dark: #f9f8f6;
+  --on-dark-soft: #a69e98;
   --success: #5db872;
   --warning: #d4a017;
   --error: #c64545;
   --font-display:
-    Copernicus, "Tiempos Headline", "Cormorant Garamond", "EB Garamond",
-    Garamond, "Times New Roman", serif;
+    "Cormorant Garamond", "EB Garamond", Garamond, "Times New Roman", serif;
   --font-body:
-    StyreneB, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-code:
     "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
   --space-xxs: 4px;
@@ -77,7 +80,7 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-pill: 9999px;
-  --focus-ring: 0 0 0 3px rgb(204 120 92 / 15%);
+  --focus-ring: 0 0 0 3px rgb(181 82 59 / 15%);
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--canvas);
@@ -177,7 +180,7 @@ textarea:focus {
   outline-offset: 3px;
 }
 a {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 a:active {
   text-decoration: underline;
@@ -251,6 +254,8 @@ pre {
   font-size: 13px;
   font-weight: 500;
 }
+/* .badge-coral is the earlier name, kept for artifacts that use it. */
+.badge-primary,
 .badge-coral {
   background: var(--primary);
   color: var(--on-primary);

@@ -262,23 +262,37 @@ try {
       canvas: getComputedStyle(el).backgroundColor,
       primary: getComputedStyle(document.querySelector("#new")).backgroundColor,
     })),
-    { canvas: "rgb(250, 249, 245)", primary: "rgb(204, 120, 92)" },
+    { canvas: "rgb(249, 248, 246)", primary: "rgb(181, 82, 59)" },
   );
   assert.equal(
     await page
       .locator("html")
       .evaluate((el) => getComputedStyle(el).backgroundColor),
-    "rgb(250, 249, 245)",
+    "rgb(249, 248, 246)",
   );
   await expect(frame.locator("h1")).toHaveCSS("font-weight", "400");
   await expect(frame.locator(".card")).toHaveCSS(
     "background-color",
-    "rgb(239, 233, 222)",
+    "rgb(235, 230, 224)",
   );
   await expect(frame.locator(".primary")).toHaveCSS(
     "background-color",
-    "rgb(204, 120, 92)",
+    "rgb(181, 82, 59)",
   );
+  // Theme: another palette restyles the workspace, survives a reload and leaves the
+  // artifact on the default one.
+  await page.locator("#toggle-sidebar-menu").click();
+  await page.locator('[data-palette-choice="harbour"]').click();
+  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(44, 93, 143)");
+  await expect(frame.locator(".primary")).toHaveCSS("background-color", "rgb(181, 82, 59)");
+  await page.goto(base + "/a/" + styledArtifact.id);
+  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(44, 93, 143)");
+  await page.locator("#toggle-sidebar-menu").click();
+  await expect(page.locator('[data-palette-choice="harbour"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('[data-palette-choice="terracotta"]').click();
+  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(181, 82, 59)");
+  await page.keyboard.press("Escape");
   await expect
     .poll(() => frame.locator("#direct-video").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
@@ -290,7 +304,7 @@ try {
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page.locator(".source-pane")).toHaveCSS(
     "background-color",
-    "rgb(24, 23, 21)",
+    "rgb(28, 26, 25)",
   );
   await page.screenshot({
     path: "test-results/design-source-desktop.png",

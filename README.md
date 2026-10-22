@@ -88,4 +88,4 @@ The workspace accepts only loopback, private-network and Tailscale clients, beca
 
 ## License
 
-[MIT](LICENSE). Bundled browser libraries and fonts keep their own licenses, which sit next to each file in `web/vendor/`.
+[MIT](LICENSE). Bundled browser libraries and fonts keep their own licenses: [`web/vendor/THIRD_PARTY_NOTICES.txt`](web/vendor/THIRD_PARTY_NOTICES.txt) has every one, and some also sit next to their file in `web/vendor/`.

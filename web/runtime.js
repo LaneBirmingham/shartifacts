@@ -69,14 +69,14 @@
   const avatar = (name, color) =>
     "data:image/svg+xml," +
     encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="${color || "#8e8b82"}"/><text x="32" y="41" font-family="sans-serif" font-size="26" text-anchor="middle" fill="#fff">${name ? initials(name).replace(/[<&>]/g, "") : "•"}</text></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="${color || "#8f8882"}"/><text x="32" y="41" font-family="sans-serif" font-size="26" text-anchor="middle" fill="#fff">${name ? initials(name).replace(/[<&>]/g, "") : "•"}</text></svg>`,
     );
   const profileOf = (p, id) =>
     freezeDeep({
       id,
       name: p?.name || "",
       avatarUrl: avatar(p?.name, p?.color),
-      color: p?.color || "#8e8b82",
+      color: p?.color || "#8f8882",
       email: null,
       isMe: !!info?.me?.id && id === info.me.id,
       guest: false,
@@ -84,7 +84,7 @@
   const user = () => {
     const me = () => {
       const m = info.me;
-      return freezeDeep({ id: m.id, name: m.name || "", avatarUrl: avatar(m.name, m.color), color: m.color || "#8e8b82", email: null, isOwner: m.isOwner, canEdit: m.canEdit });
+      return freezeDeep({ id: m.id, name: m.name || "", avatarUrl: avatar(m.name, m.color), color: m.color || "#8f8882", email: null, isOwner: m.isOwner, canEdit: m.canEdit });
     };
     const canNames = { "data.write": true, "files.write": true, "assets.write": true, "people.add": false };
     return {

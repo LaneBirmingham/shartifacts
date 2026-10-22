@@ -260,6 +260,7 @@ try {
   // The artifacts workspace lives on at /artifacts, a click away.
   await page.getByRole("link", { name: "Artifacts", exact: true }).click();
   await expect(page.getByRole("heading", { name: "A home for things you make." })).toBeVisible();
+  await page.locator("#toggle-sidebar-menu").click();
   await page.locator("#to-apps").click();
   await expect(page.getByRole("heading", { name: "Apps that run." })).toBeVisible();
 

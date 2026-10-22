@@ -254,7 +254,7 @@ button kbd {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--primary);
+  color: var(--primary-text);
   text-decoration: underline;
   font-style: italic;
 }
@@ -421,6 +421,50 @@ footer {
 .sidebar-menu .button span {
   margin-left: auto;
 }
+/* Theme: one chip per palette (theme.js fills it), its swatch the palette's primary. The
+   swatches are here because the workspace's CSP refuses inline styles. */
+.palette-picker {
+  margin: 4px 0 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 12px;
+}
+.palette-picker > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.sidebar-menu .palette-picker button {
+  width: auto;
+  min-height: 0;
+  gap: 5px;
+  padding: 3px 8px 3px 5px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--body);
+  font-size: 12px;
+}
+.sidebar-menu .palette-picker button[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--ink);
+}
+.palette-picker button i {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+}
+[data-palette-choice="terracotta"] i {
+  background: #b5523b;
+}
+[data-palette-choice="harbour"] i {
+  background: #2c5d8f;
+}
+[data-palette-choice="sage"] i {
+  background: #4a7a60;
+}
 .sidebar-menu .footer-note {
   display: flex;
   align-items: center;
@@ -435,7 +479,7 @@ i {
   display: inline-block;
   width: 6px;
   height: 6px;
-  background: var(--accent-teal);
+  background: var(--success);
   border-radius: 100%;
   margin-right: 5px;
 }
@@ -913,7 +957,7 @@ iframe {
 }
 .library-item.pinned .type-icon {
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-text);
 }
 .gallery {
   padding: 8px 0 var(--space-xxl);
@@ -1509,7 +1553,7 @@ select:focus {
   width: 6px;
   height: 6px;
   border-radius: var(--radius-pill);
-  background: var(--accent-teal);
+  background: var(--accent-slate);
 }
 .specimen pre {
   margin: 0;

@@ -197,7 +197,7 @@ func appNotFound(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	w.WriteHeader(404)
-	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found</title><style>body{font:16px/1.5 system-ui,sans-serif;color:#3d3d3a;background:#faf9f5;display:grid;place-items:center;min-height:90vh;margin:0}main{max-width:420px;padding:24px;text-align:center}</style><main><h1 style="font:400 28px Georgia,serif">Nothing here</h1><p>%s</p></main>`, html.EscapeString(msg))
+	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found</title><style>body{font:16px/1.5 system-ui,sans-serif;color:#403b38;background:#f9f8f6;display:grid;place-items:center;min-height:90vh;margin:0}main{max-width:420px;padding:24px;text-align:center}</style><main><h1 style="font:400 28px Georgia,serif">Nothing here</h1><p>%s</p></main>`, html.EscapeString(msg))
 }
 
 func (s *Server) serveApp(w http.ResponseWriter, r *http.Request, c appCtx, p string) {
@@ -394,7 +394,7 @@ func (s *Server) serveAppFile(w http.ResponseWriter, r *http.Request, c appCtx, 
 	}
 	if !site.Frontend {
 		if clean == "" {
-			s.writeAppPage(w, r, c, "", []byte(`<!doctype html><meta charset="utf-8"><title>API</title><body style="font:16px/1.5 system-ui,sans-serif;padding:32px;color:#3d3d3a;background:#faf9f5"><h1 style="font:400 28px Georgia,serif">This app is an API.</h1><p>It has no pages. Its backend answers under <code>api/</code>.</p>`))
+			s.writeAppPage(w, r, c, "", []byte(`<!doctype html><meta charset="utf-8"><title>API</title><body style="font:16px/1.5 system-ui,sans-serif;padding:32px;color:#403b38;background:#f9f8f6"><h1 style="font:400 28px Georgia,serif">This app is an API.</h1><p>It has no pages. Its backend answers under <code>api/</code>.</p>`))
 			return
 		}
 		http.NotFound(w, r)

@@ -1,6 +1,18 @@
-import { build } from "esbuild";
-import { readFileSync } from "node:fs";
+import { build as esbuild } from "esbuild";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+// Every npm package that ends up in a bundle, so THIRD_PARTY_NOTICES.txt can carry each
+// one's license. esbuild only keeps the license comments a library writes into its
+// source, and d3, highlight.js and KaTeX (among others) write none.
+const bundled = new Set();
+async function build(options) {
+  const result = await esbuild({ ...options, metafile: true });
+  for (const input of Object.keys(result.metafile.inputs)) {
+    const m = input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//);
+    if (m) bundled.add(m[1]);
+  }
+  return result;
+}
 await rm("web/vendor/lib", { recursive: true, force: true });
 await mkdir("web/vendor/lib", { recursive: true });
 // One React for the page. Every library bundle below and every compiled artifact reads
@@ -127,9 +139,8 @@ await build({
   plugins: [sharedReact],
   logLevel: "warning",
 });
-// The design system's open-source type: Inter for Copernicus' sans partner StyreneB,
-// Cormorant Garamond (its documented 500 cut) for the Copernicus display serif, and
-// JetBrains Mono. Latin subsets; design-system.css declares them.
+// The design system's open-source type: Inter, Cormorant Garamond (its documented 500
+// cut) for display, and JetBrains Mono. Latin subsets; design-system.css declares them.
 await rm("web/vendor/fonts", { recursive: true, force: true });
 await mkdir("web/vendor/fonts", { recursive: true });
 for (const [from, to] of [
@@ -150,4 +161,65 @@ await writeFile(
 await copyFile(
   "node_modules/@tailwindcss/browser/LICENSE",
   "web/vendor/lib/tailwind.js.LEGAL.txt",
+);
+
+function mit(holder, year) {
+  return `MIT License
+
+Copyright (c) ${year ? `${year} ` : ""}${holder}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+}
+// One file with the license of everything above, in the binary next to the bundles.
+// shadcn/ui is not an npm dependency: scripts/ui.jsx follows its component API and classes.
+bundled.add("node_modules/@tailwindcss/browser");
+for (const pkg of ["@fontsource-variable/inter", "@fontsource/cormorant-garamond", "@fontsource-variable/jetbrains-mono"])
+  bundled.add(`node_modules/${pkg}`);
+const notices = [...bundled]
+  .map((dir) => {
+    const { name, version, license, author } = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
+    const file = readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.(md|txt))?$/i.test(f));
+    if (file) return { name, version, license, text: readFileSync(`${dir}/${file}`, "utf8").trim() };
+    // victory-vendor (in recharts) ships no license of its own, only those of the d3
+    // modules it repackages; its package.json declares MIT for its own code.
+    if (existsSync(`${dir}/lib-vendor`)) {
+      const vendored = readdirSync(`${dir}/lib-vendor`)
+        .filter((d) => existsSync(`${dir}/lib-vendor/${d}/LICENSE`))
+        .map((d) => `--- ${d} ---\n\n${readFileSync(`${dir}/lib-vendor/${d}/LICENSE`, "utf8").trim()}`);
+      return { name, version, license, text: [`${name}'s own code: ${license} (see its package.json).`, ...vendored].join("\n\n") };
+    }
+    // seedrandom and javascript-natural-sort (both in mathjs) declare MIT in
+    // package.json without shipping the text: give it with their author.
+    if (license === "MIT") return { name, version, license, text: mit(typeof author === "string" ? author : author?.name) };
+    throw new Error(`${name} has no license file; add its notice by hand`);
+  })
+  .filter((n, i, all) => all.findIndex((o) => o.name === n.name && o.version === n.version) === i)
+  .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+notices.push({
+  name: "shadcn/ui (component API and classes followed by web/vendor/lib/ui.js)",
+  license: "MIT",
+  text: mit("shadcn", "2023"),
+});
+await writeFile(
+  "web/vendor/THIRD_PARTY_NOTICES.txt",
+  "Third-party software bundled in web/vendor/ (generated by scripts/build.mjs).\n\n" +
+    notices
+      .map((n) => `${"=".repeat(78)}\n${n.name}${n.version ? `@${n.version}` : ""} (${n.license ?? "see below"})\n${"=".repeat(78)}\n\n${n.text}\n`)
+      .join("\n"),
 );

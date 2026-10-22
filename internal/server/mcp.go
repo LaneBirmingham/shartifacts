@@ -12,19 +12,19 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// designRules is get_design_system's guide to the warm editorial design system; the
-// html_starter after it carries the same tokens as CSS.
-const designRules = `shartifacts design system: warm editorial. A tinted cream canvas, regular-weight serif headlines with negative tracking over a humanist sans, one coral accent used scarcely, cream feature cards and dark product surfaces. It should read like a literary publication, not a SaaS template. Copy the style element from html_starter into HTML artifacts (a rendered style element for React) and use its variables and classes; never inline hex.
+// designRules is get_design_system's guide to the warm editorial design system (the
+// Terracotta palette); the html_starter after it carries the same tokens as CSS.
+const designRules = `shartifacts design system: warm editorial. A warm greige paper canvas, regular-weight serif headlines with negative tracking over a humanist sans, one terracotta accent used scarcely, stone feature cards and dark product surfaces. It should read like a literary publication, not a SaaS template. Copy the style element from html_starter into HTML artifacts (a rendered style element for React) and use its variables and classes; never inline hex.
 
 Colors (CSS variables)
-- Brand: --primary #cc785c coral (primary CTAs, coral callouts, inline links), --primary-active #a9583e (pressed), --primary-disabled #e6dfd8, --accent-teal #5db8a6 (status dots, live indicators, sparingly), --accent-amber #e8a55a (category badges, inline highlights).
-- Surfaces: --canvas #faf9f5 (page floor; never pure white or cool gray), --surface-soft #f5f0e8 (soft bands, dividers), --surface-card #efe9de (feature cards), --surface-cream-strong #e8e0d2 (selected tabs, emphasized bands), --surface-dark #181715 (code, product mockups, featured cards, footer), --surface-dark-elevated #252320 (cards and buttons inside dark bands), --surface-dark-soft #1f1e1b (code blocks inside dark cards), --hairline #e6dfd8 (1px borders), --hairline-soft #ebe6df (faint dividers).
-- Text: --ink #141413 (headlines, primary text), --body-strong #252523 (lead text), --body #3d3d3a (running text), --muted #6c6a64 (sub-heads, breadcrumbs), --muted-soft #8e8b82 (captions, fine print), --on-primary #ffffff, --on-dark #faf9f5, --on-dark-soft #a09d96.
+- Brand: --primary #b5523b terracotta (primary CTAs, terracotta callouts, inline links), --primary-active #9c4330 (pressed), --primary-disabled #e6e0d9, --primary-text (terracotta as text), --accent-slate #5b7fa6 (status dots, live indicators, sparingly), --accent-olive #9a9a4a (category badges, inline highlights).
+- Surfaces: --canvas #f9f8f6 (page floor; never pure white or cool gray), --surface-soft #f2efeb (soft bands, dividers), --surface-card #ebe6e0 (feature cards), --surface-cream-strong #e3dcd4 (selected tabs, emphasized bands), --surface-dark #1c1a19 (code, product mockups, featured cards, footer), --surface-dark-elevated #2b2826 (cards and buttons inside dark bands), --surface-dark-soft #232120 (code blocks inside dark cards), --hairline #e6e0d9 (1px borders), --hairline-soft #ece8e3 (faint dividers).
+- Text: --ink #1a1716 (headlines, primary text), --body-strong #2a2624 (lead text), --body #403b38 (running text), --muted #6e6863 (sub-heads, breadcrumbs), --muted-soft #8f8882 (captions, fine print), --on-primary #ffffff, --on-dark #f9f8f6, --on-dark-soft #a69e98.
 - Semantic: --success #5db872, --warning #d4a017, --error #c64545.
 
 Typography
-- Display (h1-h3): --font-display, Copernicus/Tiempos Headline with Cormorant Garamond as the open substitute. Always weight 400 with negative tracking; never bold. When in doubt, go bigger, not bolder.
-- Body, navigation, buttons, labels: --font-body, StyreneB with Inter as the substitute, 400 for text and 500 for labels. Code and terminal text: --font-code, JetBrains Mono.
+- Display (h1-h3): --font-display, Cormorant Garamond. Always weight 400 with negative tracking; never bold. When in doubt, go bigger, not bolder.
+- Body, navigation, buttons, labels: --font-body, Inter, 400 for text and 500 for labels. Code and terminal text: --font-code, JetBrains Mono.
 - The fonts load from this server (/vendor/fonts) via the starter's @font-face rules, with fallback stacks elsewhere.
 - Scale as size/line-height/tracking:
   - display-xl 64/1.05/-1.5px (hero h1), display-lg 48/1.1/-1px (section heads), display-md 36/1.15/-0.5px, display-sm 28/1.2/-0.3px (callout headlines, prices).
@@ -35,7 +35,7 @@ Typography
 
 Layout
 - 4px base; spacing tokens --space-xxs 4, xs 8, sm 12, md 16, lg 24, xl 32, xxl 48, section 96.
-- 96px between major bands. Cards take 32px padding (24px for code windows and tiles), coral callouts 48px, and large CTA bands 64px.
+- 96px between major bands. Cards take 32px padding (24px for code windows and tiles), terracotta callouts 48px, and large CTA bands 64px.
 - Content is at most 1200px wide and centered (.artifact-page). Heroes split 6/6, with the headline, sub-line and buttons left and the illustration or code card right.
 - Grids collapse rather than shrink: feature cards go 3 to 2 to 1, tiles 4-6 to 3 to 2.
 - Breakpoints: mobile under 768px (stack everything, h1 down to 32px), tablet 768-1024, desktop above.
@@ -43,32 +43,32 @@ Layout
 
 Shape and depth
 - Radii: --radius-xs 4 (tiny accents), sm 6 (small inline buttons), md 8 (buttons, inputs, tabs), lg 12 (cards), xl 16 (hero containers), pill 9999 (badges, avatars, circular icon buttons).
-- Depth is color-block first: cream against cream-card against dark. Shadows are rare, and at most 0 1px 3px rgba(20,20,19,0.08).
-- Avatars are 40px circles. Illustrations are simple line art in coral and dark strokes on cream, never photoreal. Prefer showing real code or product UI on dark cards.
+- Depth is color-block first: paper against stone card against dark. Shadows are rare, and at most 0 1px 3px rgba(26,23,22,0.08).
+- Avatars are 40px circles. Illustrations are simple line art in terracotta and dark strokes on paper, never photoreal. Prefer showing real code or product UI on dark cards.
 
 Components (classes in the starter)
-- button.primary: coral, white 14px/500 text, 40px tall, 12px 20px padding, 8px radius; darkens to --primary-active when pressed.
+- button.primary: terracotta, white 14px/500 text, 40px tall, 12px 20px padding, 8px radius; darkens to --primary-active when pressed.
 - Plain button (secondary): canvas with a hairline border, same size.
 - On dark surfaces (.card-dark button) buttons stay dark elevated with --on-dark text; never invert them to light.
 - Circular icon buttons: 36px pill, canvas with a hairline border.
-- Text links are coral.
-- Inputs: canvas, 40px, 10px 14px padding, hairline border, 8px radius. On focus the border turns coral with a 3px coral ring at 15% alpha (--focus-ring).
+- Text links are terracotta (--primary-text).
+- Inputs: canvas, 40px, 10px 14px padding, hairline border, 8px radius. On focus the border turns terracotta with a 3px terracotta ring at 15% alpha (--focus-ring).
 - .card: feature card in --surface-card, 12px radius, 32px padding, holding an icon, a title-md heading and body text.
 - .card-outline: canvas with a hairline border, for comparison, pricing and connector tiles.
 - .card-dark: product mockup or featured tier, --surface-dark with --on-dark text.
-- pre: the code window, dark with JetBrains Mono, scrolling horizontally rather than wrapping. Muted syntax colors (warm oranges, soft blues, grays), with line numbers in --muted-soft.
-- .callout: full-bleed coral card, white text, 48px padding, with a canvas button inside.
-- Badges: .badge is a pill in --surface-card with 13px/500 ink text, 4px 12px padding. .badge-coral is coral with 12px uppercase text tracked 1.5px, for NEW and BETA.
+- pre: the code window, dark with JetBrains Mono, scrolling horizontally rather than wrapping. Muted syntax colors (warm terracottas, soft blues, grays), with line numbers in --muted-soft.
+- .callout: full-bleed terracotta card, white text, 48px padding, with a canvas button inside.
+- Badges: .badge is a pill in --surface-card with 13px/500 ink text, 4px 12px padding. .badge-primary is terracotta with 12px uppercase text tracked 1.5px, for NEW and BETA.
 - .category-tab: muted text on transparent, 8px 14px padding, 8px radius. Active is --surface-card with ink text.
-- Top nav: 64px, canvas, 14px/500 links, with a coral primary CTA at the right.
+- Top nav: 64px, canvas, 14px/500 links, with a terracotta primary CTA at the right.
 - Toasts and consent cards: dark, 12px radius, 24px padding.
 - Footer: dark (--surface-dark), --on-dark-soft text, 64px vertical padding.
 - A small radial asterisk glyph (✳) may prefix a wordmark or mark a list. Never use Claude or Anthropic names or logos.
 
 Rules
-- Use coral scarcely on individual elements and generously only on full-bleed callouts.
-- Alternate surface modes between bands: cream, cream card, dark, cream, coral callout, dark footer.
-- There are three surface tones (cream, coral, dark navy). Add no fourth: no purple, blue or green sections, no gradients.
+- Use terracotta scarcely on individual elements and generously only on full-bleed callouts.
+- Alternate surface modes between bands: paper, stone card, dark, paper, terracotta callout, dark footer.
+- There are three surface tones (paper, terracotta, dark). Add no fourth: no purple, blue or green sections, no gradients.
 - No hover treatments. Only the primary button changes, darkening on press.
 - Never use a sans for display headlines, and never use cool gray or white canvases.
 

@@ -1191,7 +1191,8 @@ function sidebarMenuOpen(open, { focus = false } = {}) {
 $("#toggle-sidebar-menu").onclick = (e) =>
   sidebarMenuOpen($("#sidebar-menu").hidden, { focus: e.detail === 0 });
 $("#sidebar-menu").addEventListener("click", (e) => {
-  if (e.target.closest("a,button")) sidebarMenuOpen(false);
+  // A theme choice keeps the menu open, so the next one can be tried in place.
+  if (e.target.closest("a,button") && !e.target.closest("[data-palette-choice]")) sidebarMenuOpen(false);
 });
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#sidebar-menu, #toggle-sidebar-menu")) sidebarMenuOpen(false);

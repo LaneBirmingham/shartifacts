@@ -258,7 +258,7 @@ code {
   margin: 16px 0 18px;
 }
 .hero h1 em {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 .lede {
   font-size: 17px;
@@ -503,7 +503,7 @@ code {
   font-size: 13px;
 }
 .notice button {
-  color: var(--primary);
+  color: var(--primary-text);
   padding: 4px 8px;
 }
 .app-body {
