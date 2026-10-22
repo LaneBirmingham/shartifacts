@@ -6,6 +6,33 @@ shartifacts is a small server you run once (on a home server, a NAS, a VPS or yo
 
 ![The artifacts workspace](docs/images/workspace.png)
 
+> [!IMPORTANT]
+> **This is an opinionated personal project, not a product.** I built shartifacts for my own setup (a home server, a tailnet, a few coding agents, and a handful of public share links) and I maintain it for that use case only. It's public so you can borrow from it, not because it aims to suit everyone.
+>
+> - **Fork it, or hand it to your coding agent as context.** Point Claude Code, Codex or Cursor at this repo, tell it what you want, and let it take the parts you like and change the rest. That is the intended way to use it.
+> - **No support or roadmap promised.** Issues and pull requests may sit unanswered or be closed if they don't fit how I use it. Features I don't need are unlikely to land here. Your fork is the place for them.
+> - **Defaults reflect my choices**: Go and plain JavaScript, files in one folder instead of a database, Docker Compose, Tailscale, Cloudflare or Caddy for sharing, the Claude artifact runtime as the compatibility target. Expect to change them.
+> - **It stays secure by design, but you own your deployment.** Read [docs/security.md](docs/security.md) before exposing anything.
+
+## Use it your way
+
+Three reasonable ways to use this repo, in order of how much I'd suggest them:
+
+1. **Adapt it with an agent.** Open your agent in a clone and give it a prompt like this:
+
+   ```text
+   Read AGENTS.md, README.md and docs/. This is shartifacts, an opinionated
+   self-hosted artifact server built for one person's setup. I want my own
+   version of it: <what you want to keep, drop or change>. Plan the changes
+   first, keep the security model in docs/security.md intact unless I say
+   otherwise, and run the checks in AGENTS.md before you finish.
+   ```
+
+2. **Fork and maintain your own.** The code is a small Go server with an embedded plain-JavaScript UI and no framework to learn. [docs/development.md](docs/development.md) has the layout and test commands, and [AGENTS.md](AGENTS.md) has the conventions.
+3. **Run it as is.** If my defaults happen to suit you, the setup below works, and the docs describe every setting. Just don't count on me to change it for you.
+
+## What it does
+
 - **Made for agents.** A built-in MCP server lets Claude Code, Codex, Cursor and other agents create, edit, search and comment on artifacts and deploy apps. Artifacts written for Claude run unchanged: the same React libraries, shadcn/ui, Tailwind, `window.storage` and `claude.use(...)` capabilities.
 - **Apps that run.** Full-stack micro frontends: a React/TypeScript frontend with a Go (or prebuilt Rust) backend and its own data, deployed as versions you can preview and roll back, each open in a tab.
 - **Private by default.** No cloud, no telemetry, no CDNs. It works offline. The workspace answers only your own network and tailnet, and an optional owner password, with a revocable token per agent, keeps out the people and devices on it you don't trust.
@@ -14,7 +41,7 @@ shartifacts is a small server you run once (on a home server, a NAS, a VPS or yo
 
 ## Set up with your agent
 
-The quickest way to install shartifacts is to let your coding agent do it. Open Claude Code, Codex, Cursor or a similar agent on the machine that will run shartifacts, or on one that can SSH into it, and paste this:
+If you want to run it as is, the quickest way is to let your coding agent do it. Open Claude Code, Codex, Cursor or a similar agent on the machine that will run shartifacts, or on one that can SSH into it, and paste this:
 
 ```text
 Set up shartifacts for me (https://github.com/LaneBirmingham/shartifacts).
@@ -85,6 +112,10 @@ The workspace accepts only loopback, private-network and Tailscale clients, beca
 - [HTTP API](docs/http-api.md)
 - [Security model](docs/security.md)
 - [Development](docs/development.md): building, tests and code layout
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. In short: bug reports and small fixes are welcome, but this is maintained for one use case, so larger features are better built in a fork. Security reports go through [SECURITY.md](SECURITY.md), never a public issue.
 
 ## License
 

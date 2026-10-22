@@ -1,6 +1,8 @@
 # Contributing
 
-Thanks for helping. shartifacts aims to stay small. It should run once, at home or on a VPS, with as little to configure as possible, and with a security model a person can hold in their head. Changes that keep it that way are the easiest to accept.
+shartifacts is an opinionated project, built and maintained for one person's use case. Bug reports and small fixes are welcome. For anything bigger, or anything that changes how it works for the sake of a different setup, forking it (or giving it to a coding agent to adapt) is usually the better route, and I may decline changes that don't fit how I use it.
+
+That said, shartifacts aims to stay small. It should run once, at home or on a VPS, with as little to configure as possible, and with a security model a person can hold in their head. Changes that keep it that way are the easiest to accept.
 
 ## Before you start
 
