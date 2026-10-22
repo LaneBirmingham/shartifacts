@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-10-22
 
-Getting ready for a public release: simpler setup, clear modes, and a harder edge.
+The first public release: simpler setup, clear modes, and a harder edge.
 
 ### Upgrading
 
