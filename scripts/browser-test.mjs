@@ -182,6 +182,7 @@ try {
   );
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((t) => t.name).sort(), [
+    "archive_artifacts",
     "artifact_comments",
     "artifact_db",
     "artifact_storage",
@@ -781,6 +782,49 @@ try {
   await page.locator("#active-filters").getByRole("button", { name: "Remove filter #finance" }).click();
   await expect(page.locator("#active-filters")).toBeHidden();
   await expect(page.locator("#library-label")).toHaveText("THE LIBRARY");
+  // Select mode archives several at once; the archive lists, searches, restores and
+  // permanently deletes them, and an archived artifact opens with a notice saying so.
+  const scratch = [];
+  for (const title of ["Scratch one", "Scratch two"])
+    scratch.push((await api("/api/artifacts", { title, kind: "markdown", content: `# ${title}` })).id);
+  await page.reload();
+  const libraryTitles = page.locator("#library .library-item strong");
+  await expect(libraryTitles.filter({ hasText: "Scratch" })).toHaveCount(2);
+  await page.locator("#toggle-select").click();
+  await expect(page.locator("#bulk-archive")).toBeDisabled();
+  await page.locator("#library .library-item", { hasText: "Scratch two" }).click();
+  await page.locator("#library .library-item", { hasText: "Scratch one" }).click();
+  await expect(page.locator("#bulk-count")).toHaveText("2 selected");
+  await page.locator("#bulk-archive").click();
+  await expect(page.locator("#toast")).toContainText("Archived 2 artifacts");
+  await expect(libraryTitles.filter({ hasText: "Scratch" })).toHaveCount(0);
+  assert.ok(!(await api("/api/artifacts")).some((a) => a.title.startsWith("Scratch")));
+  await page.locator("#toggle-select").click();
+  await page.locator("#toggle-archive").click();
+  await expect(page.locator("#library-label")).toHaveText("ARCHIVE");
+  await expect(libraryTitles).toHaveText(["Scratch one", "Scratch two"]);
+  await search.fill(`"scratch two"`);
+  await expect(libraryTitles).toHaveText(["Scratch two"]);
+  await search.fill("");
+  await page.locator("#library .library-item", { hasText: "Scratch one" }).click();
+  await expect(page.locator("#archived-notice")).toBeVisible();
+  await page.getByRole("button", { name: "Restore to library" }).click();
+  await expect(page.locator("#archived-notice")).toBeHidden();
+  await expect(libraryTitles).toHaveText(["Scratch two"]);
+  await page.locator("#toggle-select").click();
+  await page.locator("#bulk-all").click();
+  page.once("dialog", (d) => d.accept());
+  await page.locator("#bulk-delete").click();
+  await expect(page.locator("#toast")).toContainText("Deleted 1 artifact");
+  await expect(page.locator("#library .empty-library")).toContainText("Nothing archived");
+  assert.equal((await fetch(`${base}/api/artifacts/${scratch[1]}`)).status, 404);
+  await page.locator("#toggle-select").click();
+  await page.locator("#toggle-archive").click();
+  await expect(page.locator("#library-label")).toHaveText("THE LIBRARY");
+  await expect(libraryTitles.filter({ hasText: "Scratch one" })).toHaveCount(1);
+  // Bulk delete refuses what is still in the library.
+  assert.equal((await api("/api/artifacts/bulk", { op: "delete", ids: [scratch[0]] })).failed[0].id, scratch[0]);
+  await api(`/api/artifacts/${scratch[0]}?base_version=1`, undefined, "DELETE");
   // On a short tablet screen the library still starts right under the search.
   await page.setViewportSize({ width: 1024, height: 640 });
   await expect(page.locator("#library .library-item").first()).toBeInViewport();
@@ -1154,7 +1198,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   // The "Broken" artifact errors on purpose, including in its home-page thumbnail.
   assert.deepEqual(errors.filter((e) => !e.includes("missingFunction")), [], "browser runtime errors");
   console.log(
-    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
+    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
   );
 } catch (e) {
   if (page) {

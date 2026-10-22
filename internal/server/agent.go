@@ -121,16 +121,50 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 		return nil, map[string]any{"results": results}, nil
 	})
 
+	type ArchiveInput struct {
+		IDs     []string `json:"ids" jsonschema:"Artifacts to archive (or restore), up to 200"`
+		Restore bool     `json:"restore,omitempty" jsonschema:"Bring them back from the archive to the library instead"`
+	}
+	mcp.AddTool(m, &mcp.Tool{Name: "archive_artifacts", Description: "Archive artifacts, many at once, to tidy the library: they leave the library, list_artifacts and search_artifacts (unless archived asks for them) but keep their versions, data, comments and share links. Reversible: restore:true brings them back. Returns done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in ArchiveInput) (*mcp.CallToolResult, any, error) {
+		op := "archive"
+		if in.Restore {
+			op = "restore"
+		}
+		out, e := s.bulk(op, in.IDs)
+		if e != nil {
+			return nil, nil, e
+		}
+		return nil, out, nil
+	})
+
 	type DeleteInput struct {
-		ID          string `json:"id"`
-		BaseVersion int    `json:"base_version" jsonschema:"Latest version from get_artifact"`
-		Confirm     string `json:"confirm,omitempty" jsonschema:"The token the first call returned, after the person confirmed"`
+		ID          string   `json:"id,omitempty" jsonschema:"One artifact"`
+		IDs         []string `json:"ids,omitempty" jsonschema:"Archived artifacts to delete together, up to 200 (emptying the archive); no confirmation"`
+		BaseVersion int      `json:"base_version,omitempty" jsonschema:"For an artifact still in the library: its latest version from get_artifact"`
+		Confirm     string   `json:"confirm,omitempty" jsonschema:"The token the first call returned, after the person confirmed"`
 	}
 	destructive := true
-	mcp.AddTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete an artifact with its versions, data, assets and comments, only when the person asks. The first call returns a confirmation token: ask the person to confirm, then call again with confirm.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete artifacts with their versions, data, assets, comments and share links. Archived artifacts are deleted at once: pass ids (or id) to empty the archive, and get done and failed by id; one not archived fails rather than being deleted. An artifact still in the library needs id, base_version and the person's say-so: the first call returns a confirmation token to show them, then call again with confirm.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
+		if in.IDs != nil {
+			if in.ID != "" {
+				return nil, nil, errors.New("send id or ids, not both")
+			}
+			out, e := s.bulk("delete", in.IDs)
+			if e != nil {
+				return nil, nil, e
+			}
+			return nil, out, nil
+		}
 		a, e := s.Store.Get(in.ID)
 		if e != nil {
 			return nil, nil, e
+		}
+		// Archiving was the deliberate first step, so an archived artifact needs no token.
+		if !a.ArchivedAt.IsZero() {
+			if e = s.Store.DeleteArchived(in.ID); e != nil {
+				return nil, nil, e
+			}
+			return nil, map[string]any{"deleted": true, "id": in.ID}, nil
 		}
 		deleteMu.Lock()
 		defer deleteMu.Unlock()
@@ -164,10 +198,10 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 	type WatchInput struct {
 		IDs   []string `json:"ids,omitempty" jsonschema:"Artifacts to watch; omit for all"`
 		After int64    `json:"after,omitempty" jsonschema:"The cursor from the previous call; 0 returns recent events"`
-		Kinds []string `json:"kinds,omitempty" jsonschema:"version, comments, db, assets or deleted; omit for all"`
+		Kinds []string `json:"kinds,omitempty" jsonschema:"version, comments, db, assets, archived (detail true or false) or deleted; omit for all"`
 		Wait  int      `json:"wait_seconds,omitempty" jsonschema:"Wait up to this long (max 50) for the next event when there is none yet"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "watch_artifacts", Description: "Learn what changed: new versions (yours or the person's), comments, page data and assets. Returns events after the cursor, waiting up to wait_seconds for one; pass the returned cursor next time."}, func(ctx context.Context, req *mcp.CallToolRequest, in WatchInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "watch_artifacts", Description: "Learn what changed: new versions (yours or the person's), comments, page data, assets, archiving and deletion. Returns events after the cursor, waiting up to wait_seconds for one; pass the returned cursor next time."}, func(ctx context.Context, req *mcp.CallToolRequest, in WatchInput) (*mcp.CallToolResult, any, error) {
 		ids, kinds := map[string]bool{}, map[string]bool{}
 		for _, id := range in.IDs {
 			ids[id] = true

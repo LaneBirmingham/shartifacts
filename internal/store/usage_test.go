@@ -171,7 +171,7 @@ func TestSavesToDifferentArtifactsRunTogether(t *testing.T) {
 			for v := 1; v <= 10; v++ {
 				_, err := s.Save(id, Input{Title: "a", Kind: "code", Content: strings.Repeat("x", v), BaseVersion: v})
 				errs <- err
-				s.List()
+				s.List(ExcludeArchived)
 			}
 		}()
 	}

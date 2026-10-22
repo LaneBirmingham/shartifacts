@@ -1,6 +1,10 @@
 const $ = (s) => document.querySelector(s);
 const state = {
+  // items is the library; archive is the archive, fetched only while it is in view or an
+  // archived artifact is open, so a long archive costs nothing the rest of the time.
   items: [],
+  archive: null,
+  archiveView: false,
   artifact: null,
   version: 0,
   view: "preview",
@@ -132,8 +136,19 @@ async function previewDraft() {
     if (seq === previewSequence) toast("Preview: " + e.message);
   }
 }
-function toast(message) {
+// A toast may offer one action, such as undoing what it reports.
+function toast(message, action) {
   $("#toast").textContent = message;
+  if (action) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = action.label;
+    b.onclick = () => {
+      $("#toast").hidden = true;
+      action.run();
+    };
+    $("#toast").append(" ", b);
+  }
   $("#toast").hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ($("#toast").hidden = true), 4500);
@@ -231,6 +246,54 @@ function searching() {
     $("#search").value.trim() || searchTags.size || $("#filter").value || $("#when").value || $("#has").value,
   );
 }
+// The sidebar lists the library or, once asked, the archive: the artifacts put away so
+// the library stays short. Either can be searched, and selected in bulk.
+function shelf() {
+  return state.archiveView ? state.archive || [] : state.items;
+}
+const byArchived = (a, b) => String(b.archived_at).localeCompare(String(a.archived_at));
+function archiveOpen(open) {
+  state.archiveView = open;
+  selected.clear();
+  const b = $("#toggle-archive");
+  b.setAttribute("aria-pressed", String(open));
+  if (open) b.textContent = "← Back to the library";
+  else b.innerHTML = '<span aria-hidden="true">▤</span> Archive';
+  return refresh({ force: true });
+}
+// Select mode turns the list into checkboxes for archiving, restoring or deleting many.
+const selected = new Set();
+let selecting = false,
+  lastPicked = "";
+function selectMode(on) {
+  selecting = on;
+  selected.clear();
+  $("#toggle-select").setAttribute("aria-pressed", String(on));
+  $("#toggle-select").textContent = on ? "Done" : "Select";
+  list();
+}
+function bulkBar(visible) {
+  const n = selected.size;
+  $("#bulk-bar").hidden = !selecting;
+  $("#bulk-count").textContent = n ? `${n} selected` : "None selected";
+  $("#bulk-all").textContent = n && visible.every((id) => selected.has(id)) ? "Select none" : "Select all";
+  $("#bulk-archive").hidden = state.archiveView;
+  $("#bulk-restore").hidden = $("#bulk-delete").hidden = !state.archiveView;
+  for (const b of ["#bulk-archive", "#bulk-restore", "#bulk-delete"]) $(b).disabled = !n;
+}
+function pick(id, range) {
+  const ids = [...$("#library").querySelectorAll(".library-item")].map((b) => b.dataset.id);
+  const on = !selected.has(id);
+  // Shift-click selects (or clears) everything between the last pick and this one.
+  const from = ids.indexOf(lastPicked),
+    to = ids.indexOf(id);
+  for (const i of range && from >= 0 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id])
+    on ? selected.add(i) : selected.delete(i);
+  lastPicked = id;
+  for (const b of $("#library").querySelectorAll(".library-item"))
+    b.setAttribute("aria-pressed", String(selected.has(b.dataset.id)));
+  bulkBar(ids);
+}
 function segments(parent, parts, fallback) {
   if (!parts?.length) {
     parent.textContent = fallback;
@@ -246,7 +309,7 @@ function segments(parent, parts, fallback) {
 }
 function tagChips() {
   const counts = new Map();
-  for (const a of state.items) for (const t of a.tags || []) counts.set(t, (counts.get(t) || 0) + 1);
+  for (const a of shelf()) for (const t of a.tags || []) counts.set(t, (counts.get(t) || 0) + 1);
   const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 10).map(([t]) => t);
   for (const t of searchTags) if (!top.includes(t)) top.unshift(t);
   const chips = $("#tag-chips");
@@ -324,8 +387,10 @@ function libraryItem(a, hit) {
   b.className =
     "library-item" +
     (a.id === state.artifact?.id ? " active" : "") +
-    (a.pinned ? " pinned" : "");
+    (a.pinned ? " pinned" : "") +
+    (selecting ? " selecting" : "");
   b.dataset.id = a.id;
+  if (selecting) b.setAttribute("aria-pressed", String(selected.has(a.id)));
   b.title = a.description ? `${a.title} — ${a.description}` : a.title;
   const i = document.createElement("span"),
     emoji = artifactIcon(a.icon);
@@ -336,8 +401,10 @@ function libraryItem(a, hit) {
   const strong = document.createElement("strong");
   segments(strong, hit?.title_segments, a.title);
   const small = document.createElement("small");
-  small.textContent = `${a.pinned ? "PINNED · " : ""}${a.kind.toUpperCase()} · v${a.version}`;
-  if (hit) small.textContent += ` · ${ago(a.updated_at)}`;
+  small.textContent = `${a.pinned && !a.archived_at ? "PINNED · " : ""}${a.kind.toUpperCase()} · v${a.version}`;
+  if (a.archived_at)
+    small.textContent += ` · archived ${new Date(a.archived_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  else if (hit) small.textContent += ` · ${ago(a.updated_at)}`;
   t.append(strong, small);
   const excerpt = hit?.snippet?.length ? hit.snippet : null;
   if (hit && (excerpt || a.description)) {
@@ -347,36 +414,50 @@ function libraryItem(a, hit) {
     t.append(p);
   }
   b.append(i, t);
-  b.onclick = () => navigate(a.id);
+  if (selecting) {
+    const box = document.createElement("span");
+    box.className = "select-box";
+    box.setAttribute("aria-hidden", "true");
+    b.prepend(box);
+  }
+  b.onclick = (e) => (selecting ? pick(a.id, e.shiftKey) : navigate(a.id));
   return b;
 }
 function showLibrary(entries, { total, suggestion, active }) {
+  // A selection is only ever of what is in view, so a bulk action does what it shows.
+  const visible = entries.map(([a]) => a.id);
+  for (const id of selected) if (!visible.includes(id)) selected.delete(id);
   $("#library").replaceChildren(...entries.map(([a, hit]) => libraryItem(a, hit)));
-  $("#library-label").textContent = active ? "RESULTS" : "THE LIBRARY";
-  $("#count").textContent = active ? total : state.items.length;
+  $("#library").classList.toggle("archive-shelf", state.archiveView);
+  $("#library-label").textContent = active ? "RESULTS" : state.archiveView ? "ARCHIVE" : "THE LIBRARY";
+  $("#count").textContent = active ? total : shelf().length;
   $("#did-you-mean").hidden = !suggestion;
   $("#suggestion").textContent = suggestion || "";
+  bulkBar(visible);
   if (!entries.length) {
     const p = document.createElement("p");
     p.className = "empty-library";
-    p.textContent = !state.items.length
-      ? "An empty shelf. Plenty of possibility."
-      : "Nothing matches. Try fewer words, or filters like tag:finance, kind:react, has:comments or updated:month.";
+    p.textContent = state.archiveView && !shelf().length
+      ? "Nothing archived. Archive what you no longer need and the library stays short; it keeps every version, and agents can tidy up too."
+      : !shelf().length
+        ? "An empty shelf. Plenty of possibility."
+        : "Nothing matches. Try fewer words, or filters like tag:finance, kind:react, has:comments or updated:month.";
     $("#library").append(p);
   }
 }
 // Resolves once the library shows the newest results: false when newer ones replaced them.
 function list({ immediate = false } = {}) {
   // Gallery thumbnails are live pages; rebuild them only when the library changes.
-  const next = JSON.stringify([state.items, state.artifact?.id]);
-  if (next !== listed) gallery();
-  listed = next;
+  const shown = JSON.stringify([state.items, state.artifact?.id]);
+  if (shown !== galleried) gallery();
+  galleried = shown;
+  listed = listKey();
   tagChips();
   clearTimeout(searchTimer);
   if (!searching()) {
     searchSequence++;
     showLibrary(
-      [...state.items].sort(byPin).map((a) => [a]),
+      [...shelf()].sort(state.archiveView ? byArchived : byPin).map((a) => [a]),
       { active: false },
     );
     return Promise.resolve(true);
@@ -386,6 +467,7 @@ function list({ immediate = false } = {}) {
   return new Promise((resolve) => {
     searchTimer = setTimeout(async () => {
       const params = new URLSearchParams({ q: $("#search").value, limit: "100" });
+      if (state.archiveView) params.set("archived", "only");
       for (const t of searchTags) params.append("tag", t);
       for (const [key, el] of [["kind", "#filter"], ["updated", "#when"], ["has", "#has"]])
         if ($(el).value) params.set(key, $(el).value);
@@ -404,12 +486,24 @@ function list({ immediate = false } = {}) {
     }, immediate ? 0 : 120);
   });
 }
-let listed = "";
-async function refresh() {
-  state.items = await api("/api/artifacts");
+let listed = "",
+  galleried = "";
+function listKey() {
+  return JSON.stringify([state.items, state.archive, state.archiveView, state.artifact?.id]);
+}
+async function refresh({ force = false } = {}) {
+  const items = await api("/api/artifacts");
+  // The archive is fetched only when it is in view, or for an open artifact that is (or
+  // has just gone) out of the library, so the poll can tell archived from deleted.
+  const open = state.artifact;
+  const archived =
+    state.archiveView || open?.archived_at || (open && !items.some((a) => a.id === open.id))
+      ? await api("/api/artifacts?archived=only")
+      : null;
+  state.items = items;
+  state.archive = archived;
   // The poll calls this every few seconds; rebuilding unchanged lists would drop focus.
-  const next = JSON.stringify([state.items, state.artifact?.id]);
-  if (next !== listed) list();
+  if (force || listKey() !== listed) list();
 }
 function draftKey(id) {
   return `shartifacts.draft.${id}`;
@@ -790,6 +884,7 @@ function render({ keepFrame = false } = {}) {
   $("#artifact-description").textContent = a.description || "";
   $("#artifact-description").hidden = !a.description;
   $("#pin").textContent = a.pinned ? "Unpin from library top" : "Pin to top of library";
+  renderArchived();
   $("#type-label").textContent = `${r.kind.toUpperCase()} / ARTIFACT`;
   $("#crumb").textContent = `Workspace / ${r.title}`;
   $("#saved-at").textContent =
@@ -1198,6 +1293,12 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#sidebar-menu, #toggle-sidebar-menu")) sidebarMenuOpen(false);
 });
 $("#sidebar").addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && selecting && $("#sidebar-menu").hidden && !e.target.closest("#search")) {
+    e.stopPropagation();
+    selectMode(false);
+    $("#toggle-select").focus();
+    return;
+  }
   if (e.key !== "Escape" || $("#sidebar-menu").hidden) return;
   e.stopPropagation();
   sidebarMenuOpen(false);
@@ -1403,6 +1504,21 @@ $("#pin").onclick = async () => {
     toast(e.message);
   }
 };
+// closeArtifact returns to the home page once the open artifact is deleted.
+function closeArtifact() {
+  try {
+    localStorage.removeItem(draftKey(state.artifact.id));
+  } catch {}
+  state.artifact = null;
+  state.dirty = false;
+  setEditing(false);
+  history.pushState({}, "", "/artifacts");
+  $("#artifact").hidden = true;
+  $("#welcome").hidden = false;
+  $("#more-menu").hidden = true;
+  $("#crumb").textContent = "Workspace / Your artifacts";
+  setTabIcon("");
+}
 $("#delete").onclick = async () => {
   if (
     !confirm(
@@ -1415,24 +1531,75 @@ $("#delete").onclick = async () => {
       `/api/artifacts/${state.artifact.id}?base_version=${state.artifact.revisions.length}`,
       { method: "DELETE" },
     );
-    try {
-      localStorage.removeItem(draftKey(state.artifact.id));
-    } catch {}
-    state.artifact = null;
-    state.dirty = false;
-    setEditing(false);
-    history.pushState({}, "", "/artifacts");
-    $("#artifact").hidden = true;
-    $("#welcome").hidden = false;
-    $("#more-menu").hidden = true;
-    $("#crumb").textContent = "Workspace / Your artifacts";
-    setTabIcon("");
+    closeArtifact();
     await refresh();
     toast("Artifact deleted");
   } catch (e) {
     toast(e.message);
   }
 };
+$("#delete-archived").onclick = $("#delete").onclick;
+// An archived artifact still opens, with a notice saying so; the more menu archives or
+// restores it.
+function renderArchived() {
+  const at = state.artifact?.archived_at;
+  $("#archived-notice").hidden = !at;
+  if (at) $("#archived-at").textContent = `Archived ${ago(at)}.`;
+  $("#archive").textContent = at ? "Restore to library" : "Archive artifact";
+}
+const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+// archive archives, restores or permanently deletes artifacts (delete takes only archived
+// ones) and reports what happened, offering to undo an archive or restore.
+async function archive(op, ids) {
+  const res = await api("/api/artifacts/bulk", { method: "POST", body: JSON.stringify({ op, ids }) });
+  const open = state.artifact;
+  if (open && res.done.includes(open.id)) {
+    if (op === "delete") closeArtifact();
+    else open.archived_at = op === "archive" ? new Date().toISOString() : undefined;
+    if (op !== "delete") renderArchived();
+  }
+  for (const id of res.done) selected.delete(id);
+  await refresh({ force: true });
+  const n = res.done.length;
+  const said = { archive: "Archived", restore: "Restored", delete: "Deleted" }[op];
+  let message = `${said} ${plural(n, "artifact")}`;
+  if (res.failed.length) message += `; ${plural(res.failed.length, "artifact")} could not be: ${res.failed[0].error}`;
+  const undo = { archive: "restore", restore: "archive" }[op];
+  toast(message, undo && n ? { label: "Undo", run: () => archive(undo, res.done).catch((e) => toast(e.message)) } : undefined);
+  return res;
+}
+$("#archive").onclick = async () => {
+  $("#more-menu").hidden = true;
+  try {
+    await archive(state.artifact.archived_at ? "restore" : "archive", [state.artifact.id]);
+  } catch (e) {
+    toast(e.message);
+  }
+};
+$("#unarchive").onclick = () => archive("restore", [state.artifact.id]).catch((e) => toast(e.message));
+$("#toggle-select").onclick = () => selectMode(!selecting);
+$("#toggle-archive").onclick = () => archiveOpen(!state.archiveView).catch((e) => toast(e.message));
+$("#bulk-all").onclick = () => {
+  const ids = [...$("#library").querySelectorAll(".library-item")].map((b) => b.dataset.id);
+  const all = ids.length && ids.every((id) => selected.has(id));
+  selected.clear();
+  if (!all) for (const id of ids) selected.add(id);
+  list();
+};
+for (const [button, op] of [["#bulk-archive", "archive"], ["#bulk-restore", "restore"], ["#bulk-delete", "delete"]])
+  $(button).onclick = async () => {
+    const ids = [...selected];
+    if (
+      op === "delete" &&
+      !confirm(`Permanently delete ${plural(ids.length, "archived artifact")} with every version, their data and comments? This cannot be undone.`)
+    )
+      return;
+    try {
+      await archive(op, ids);
+    } catch (e) {
+      toast(e.message);
+    }
+  };
 $("#create-form").onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target,
@@ -1687,10 +1854,16 @@ setInterval(async () => {
     const a = state.artifact;
     // A list fetched while this page was saving may be older than what it now shows.
     if (!a || writes !== localWrites) return;
-    const summary = state.items.find((v) => v.id === a.id);
+    const summary = state.items.find((v) => v.id === a.id) || state.archive?.find((v) => v.id === a.id);
     if (!summary) {
       $("#remote-change").hidden = false;
       return;
+    }
+    // Archived or restored elsewhere, by an agent or another tab.
+    if ((summary.archived_at || "") !== (a.archived_at || "")) {
+      a.archived_at = summary.archived_at;
+      renderArchived();
+      list();
     }
     const replies = comments.length,
       open = comments.filter((c) => !c.parent && !c.resolved).length;

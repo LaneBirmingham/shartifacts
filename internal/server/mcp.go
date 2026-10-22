@@ -112,7 +112,9 @@ func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
 		// With sign-in on, the shell has no token: the URL carries an hour's grant instead.
 		uploadNote = "\nThe upload URL works for an hour without a token; list_media returns a fresh one."
 	}
-	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data. Delete only when asked, with delete_artifact's confirmation.
+	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
+
+The library grows with every artifact, so agents keep it tidy. archive_artifacts moves artifacts (many at once) out of the library into the archive, reversibly: they keep their versions, data, comments and links, and restore brings them back. list_artifacts and search_artifacts leave the archive out unless archived is include or only. When the person asks you to tidy up, archive what is stale, superseded or a throwaway test (search_artifacts sort:oldest or before:90d finds the stale), and say what you archived. delete_artifact with ids permanently deletes archived artifacts, to empty the archive when the person wants that. An artifact still in the library is deleted only when the person asks, with delete_artifact's confirmation.
 
 Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data files (CSV, JSON, text, Markdown, XLSX, PDF): upload files. Add ?name=FILE to the upload URL to keep a file's name; artifacts read data files with await window.fs.readFile(name, {encoding: 'utf8'}) (omit encoding for bytes). Do not manually transcribe base64 into source (2 MiB limit). Shell agents: run the curl command from list_media (raw bytes, max 256 MiB). Only clients that can supply bytes programmatically use begin_media_upload then upload_media_chunk (<=1048576 bytes per chunk, use returned offset, final:true on last). If the shell cannot reach the upload host, say so. list_media returns reusable URLs; embed them literally, e.g. <video controls playsinline src="/media/ID.mp4">, <audio controls src="/media/ID.mp3">, <img src="/media/ID.png">, <track kind="captions" src="/media/ID.vtt" srclang="en"> (set crossorigin="anonymous" on the parent). Autoplay needs muted playsinline. Verify media decodes/plays in the saved preview; report missing or corrupt media instead of claiming success.
 
@@ -123,32 +125,48 @@ Before updating, get_artifact for the latest base_version. For small changes sen
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
 ` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote})
 	type ListInput struct {
-		Limit  int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
-		Cursor string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
+		Limit    int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
+		Cursor   string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
+		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive; include: both"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List artifacts, most recently updated first, 50 at a time (id, title, kind, version, description, icon, tags, pinned, open_comments); total counts them all and next_cursor fetches the next page. To find something specific, search_artifacts is quicker."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, any, error) {
-		all := s.Store.List()
+	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List the library, most recently updated first, 50 at a time (id, title, kind, version, updated_at, description, icon, tags, pinned, open_comments). Archived artifacts are left out unless archived is only or include (they carry archived_at). total counts those listed, archived counts the archive when it is left out, and next_cursor fetches the next page. To find something specific, search_artifacts is quicker."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, any, error) {
+		filter, err := store.ParseArchiveFilter(in.Archived)
+		if err != nil {
+			return nil, nil, err
+		}
+		all := s.Store.List(filter)
 		page, next, err := pageOf(all, func(a store.Summary) (time.Time, string) { return a.UpdatedAt, a.ID }, in.Cursor, in.Limit)
 		if err != nil {
 			return nil, nil, err
 		}
 		out := map[string]any{"artifacts": page, "total": len(all)}
+		if filter == store.ExcludeArchived {
+			out["archived"] = len(s.Store.List(store.OnlyArchived))
+		}
 		if next != "" {
 			out["next_cursor"] = next
 		}
 		return nil, out, nil
 	})
 	type SearchInput struct {
-		Query string `json:"query" jsonschema:"Words to find in titles, tags, descriptions, rendered text, notes and comments (typos and word forms are fine), with optional filters: \"exact phrase\", -exclude, kind:react, tag:finance or #finance, is:pinned, has:comments|open|files|video|audio|image|chart|diagram|table|form|3d|math|data, updated:today|week|month|year|30d|2026-03, created:…, before:/after: dates"`
-		Sort  string `json:"sort,omitempty" jsonschema:"relevance (default with words), updated, created or title"`
-		Limit int    `json:"limit,omitempty" jsonschema:"At most this many results (default 10, max 50)"`
+		Query    string `json:"query" jsonschema:"Words to find in titles, tags, descriptions, rendered text, notes and comments (typos and word forms are fine), with optional filters: \"exact phrase\", -exclude, kind:react, tag:finance or #finance, is:pinned, is:archived, has:comments|open|files|video|audio|image|chart|diagram|table|form|3d|math|data, updated:today|week|month|year|30d|2026-03, created:…, before:/after: dates (before:90d is untouched for 90 days)"`
+		Sort     string `json:"sort,omitempty" jsonschema:"relevance (default with words), updated, oldest (least recently updated first, for tidying up), created or title"`
+		Limit    int    `json:"limit,omitempty" jsonschema:"At most this many results (default 10, max 50)"`
+		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive (as is:archived); include: both"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "search_artifacts", Description: "Find artifacts by what they contain or are about, ranked, with a matching excerpt for each and a corrected query when words were misspelt. Use it before list_artifacts when looking for something specific."}, func(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, any, error) {
 		limit := in.Limit
 		if limit <= 0 {
 			limit = 10
 		}
-		res := s.runSearch(in.Query, nil, in.Sort, min(limit, 50))
+		var filters map[string][]string
+		if in.Archived != "" {
+			if _, err := store.ParseArchiveFilter(in.Archived); err != nil {
+				return nil, nil, err
+			}
+			filters = map[string][]string{"archived": {strings.ToLower(strings.TrimSpace(in.Archived))}}
+		}
+		res := s.runSearch(in.Query, filters, in.Sort, min(limit, 50))
 		type result struct {
 			ID          string   `json:"id"`
 			Title       string   `json:"title"`
@@ -159,6 +177,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 			Tags        []string `json:"tags,omitempty"`
 			Matched     []string `json:"matched,omitempty"`
 			Excerpt     string   `json:"excerpt,omitempty"`
+			ArchivedAt  string   `json:"archived_at,omitempty"`
 		}
 		out := []result{}
 		for _, r := range res.Results {
@@ -166,7 +185,11 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 			for _, seg := range r.Snippet {
 				excerpt.WriteString(seg.Text)
 			}
-			out = append(out, result{r.Summary.ID, r.Title, r.Kind, r.Version, r.UpdatedAt.Format("2006-01-02"), r.Description, r.Summary.Tags, r.Matched, excerpt.String()})
+			archived := ""
+			if !r.ArchivedAt.IsZero() {
+				archived = r.ArchivedAt.Format("2006-01-02")
+			}
+			out = append(out, result{r.Summary.ID, r.Title, r.Kind, r.Version, r.UpdatedAt.Format("2006-01-02"), r.Description, r.Summary.Tags, r.Matched, excerpt.String(), archived})
 		}
 		body := map[string]any{"results": out, "total": res.Total}
 		if res.Suggestion != "" {
@@ -185,6 +208,11 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		out := map[string]any{"id": a.ID, "version": r.Version, "title": r.Title, "kind": r.Kind}
 		if problems := checkArtifact(r.Kind, r.Content, r.Files); len(problems) > 0 {
 			out["warnings"] = problems
+		}
+		// An archived artifact stays archived as it changes; say so, since the person will
+		// not find it in the library.
+		if !a.ArchivedAt.IsZero() {
+			out["archived_at"] = a.ArchivedAt
 		}
 		return out
 	}

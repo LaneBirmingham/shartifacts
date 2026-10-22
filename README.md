@@ -33,7 +33,7 @@ Three reasonable ways to use this repo, in order of how much I'd suggest them:
 
 ## What it does
 
-- **Made for agents.** A built-in MCP server lets Claude Code, Codex, Cursor and other agents create, edit, search and comment on artifacts and deploy apps. Artifacts written for Claude run unchanged: the same React libraries, shadcn/ui, Tailwind, `window.storage` and `claude.use(...)` capabilities.
+- **Made for agents.** A built-in MCP server lets Claude Code, Codex, Cursor and other agents create, edit, search and comment on artifacts, archive the ones you are done with to keep the library tidy, and deploy apps. Artifacts written for Claude run unchanged: the same React libraries, shadcn/ui, Tailwind, `window.storage` and `claude.use(...)` capabilities.
 - **Apps that run.** Full-stack micro frontends: a React/TypeScript frontend with a Go (or prebuilt Rust) backend and its own data, deployed as versions you can preview and roll back, each open in a tab.
 - **Private by default.** No cloud, no telemetry, no CDNs. It works offline. The workspace answers only your own network and tailnet, and an optional owner password, with a revocable token per agent, keeps out the people and devices on it you don't trust.
 - **Share when you want to.** Give it a hostname of your own and it serves read-only artifact links and public app links there, and nothing else.
@@ -107,7 +107,7 @@ The workspace accepts only loopback, private-network and Tailscale clients, beca
 - [Public sharing](docs/sharing.md): share links, app hostnames, DNS, Caddy, Cloudflare
 - [Reverse proxies](docs/reverse-proxies.md): tailscale serve, nginx, Nginx Proxy Manager, Traefik
 - [Agents and MCP](docs/agents.md): client setup and the MCP tools
-- [Artifacts](docs/artifacts.md): kinds, editing, search, the default design, storage
+- [Artifacts](docs/artifacts.md): kinds, editing, search, the archive, the default design, storage
 - [Claude compatibility](docs/claude-compatibility.md): source written for Claude, and the `claude.use` runtime
 - [Media and data files](docs/media.md): uploads, embedding, limits
 - [Apps](docs/apps.md): the full-stack app contract, deploys and the runner

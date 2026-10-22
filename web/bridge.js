@@ -254,7 +254,8 @@ function hostArtifactFrames(frameFor, hooks = {}) {
         }
       },
       metadata: async (frame, st, a) => {
-        const all = await request("/api/artifacts");
+        // An archived artifact is still a real one its links open.
+        const all = await request("/api/artifacts?archived=include");
         return Object.fromEntries(
           a.refs.map((ref) => {
             const id = String(ref).match(/(?:\/(?:a|artifact|view)\/)?([0-9a-f]{24})(?:[/?#]|$)/i)?.[1]?.toLowerCase() || "";

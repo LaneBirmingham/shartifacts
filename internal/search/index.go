@@ -22,7 +22,7 @@ type Source struct {
 
 // Meta is library state that changes without the text changing, read at search time.
 type Meta struct {
-	Pinned                 bool
+	Pinned, Archived       bool
 	Created, Updated       time.Time
 	Comments, OpenComments int
 }
@@ -375,7 +375,7 @@ type Results struct {
 }
 
 type Options struct {
-	// Sort is relevance, updated, created or title; empty is relevance for a query with
+	// Sort is relevance, updated, oldest, created or title; empty is relevance for a query with
 	// words and updated (pinned first) otherwise.
 	Sort  string
 	Limit int
@@ -520,6 +520,11 @@ func (ix *Index) sortHits(hits []Hit, meta map[string]Meta, by string, ranked bo
 			if !a.Created.Equal(c.Created) {
 				return a.Created.After(c.Created)
 			}
+		case "oldest":
+			// The least recently updated first: what a tidy-up looks at.
+			if !a.Updated.Equal(c.Updated) {
+				return a.Updated.Before(c.Updated)
+			}
 		case "title":
 			if ti, tj := title(hits[i]), title(hits[j]); ti != tj {
 				return ti < tj
@@ -565,6 +570,16 @@ func (q Query) passes(d *Doc, m Meta) bool {
 	}
 	if q.Pinned && !m.Pinned {
 		return false
+	}
+	switch q.Archived {
+	case "only":
+		if !m.Archived {
+			return false
+		}
+	case "":
+		if m.Archived {
+			return false
+		}
 	}
 	for _, h := range q.Has {
 		if a, ok := hasAlias[h]; ok {

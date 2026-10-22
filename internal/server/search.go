@@ -43,7 +43,7 @@ func (s *Server) searchState() (*search.Index, map[string]store.Summary, map[str
 	next := make(map[string]cachedDoc, len(sources))
 	for _, src := range sources {
 		summaries[src.ID] = src.Summary
-		meta[src.ID] = search.Meta{Pinned: src.Pinned, Created: src.CreatedAt, Updated: src.UpdatedAt, Comments: src.Summary.Comments, OpenComments: src.OpenComments}
+		meta[src.ID] = search.Meta{Pinned: src.Pinned, Archived: !src.ArchivedAt.IsZero(), Created: src.CreatedAt, Updated: src.UpdatedAt, Comments: src.Summary.Comments, OpenComments: src.OpenComments}
 		key := textKey(src)
 		cached, ok := c.docs[src.ID]
 		if !ok || cached.key != key {
@@ -119,7 +119,7 @@ func (s *Server) searchRoutes(mux *http.ServeMux) {
 		v := r.URL.Query()
 		limit, _ := strconv.Atoi(v.Get("limit"))
 		filters := map[string][]string{}
-		for _, key := range []string{"kind", "tag", "has", "updated", "created", "is"} {
+		for _, key := range []string{"kind", "tag", "has", "updated", "created", "is", "archived"} {
 			filters[key] = v[key]
 		}
 		writeJSON(w, 200, s.runSearch(v.Get("q"), filters, v.Get("sort"), min(max(limit, 0), 200)))
@@ -131,9 +131,10 @@ func (s *Server) searchRoutes(mux *http.ServeMux) {
 			respond(w, 404, nil, store.ErrNotFound)
 			return
 		}
+		// The archive is out of sight, so it is never suggested as related.
 		related := []relatedResult{}
-		for _, rel := range index.Related(id, 5) {
-			if sum, ok := summaries[rel.ID]; ok {
+		for _, rel := range index.Related(id, len(summaries)) {
+			if sum, ok := summaries[rel.ID]; ok && sum.ArchivedAt.IsZero() && len(related) < 5 {
 				related = append(related, relatedResult{sum, rel})
 			}
 		}
