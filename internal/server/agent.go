@@ -98,7 +98,7 @@ func (s *Server) runDBOp(id string, op dbOp) (any, error) {
 
 func (s *Server) addAgentTools(m *mcp.Server) {
 	type DBInput struct {
-		ID string `json:"id" jsonschema:"Artifact ID"`
+		ID string `json:"id"`
 		dbOp
 		Batch []dbOp `json:"batch,omitempty" jsonschema:"Several operations, applied in order (op: batch)"`
 	}
@@ -122,7 +122,7 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 	})
 
 	type DeleteInput struct {
-		ID          string   `json:"id,omitempty" jsonschema:"One artifact"`
+		ID          string   `json:"id,omitempty"`
 		IDs         []string `json:"ids,omitempty" jsonschema:"Archived artifacts to delete together, up to 200 (emptying the archive); no confirmation"`
 		BaseVersion int      `json:"base_version,omitempty" jsonschema:"For an artifact still in the library: its latest version from get_artifact"`
 		Confirm     string   `json:"confirm,omitempty" jsonschema:"The token the first call returned, after the person confirmed"`

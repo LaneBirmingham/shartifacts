@@ -100,6 +100,76 @@ func TestMCPLinksUsePublicOrigin(t *testing.T) {
 	}
 }
 
+// The instructions are a summary; the full guide is a resource an agent reads on demand.
+// It must be listed, read in full with this connection's links and upload URL, and
+// refuse URIs it does not serve.
+func TestMCPGuideResource(t *testing.T) {
+	h := testServer(t)
+	const origin = "http://192.168.1.20:8080"
+	init := mcpRequest(t, h, origin, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`)
+	if init["capabilities"].(map[string]any)["resources"] == nil {
+		t.Fatal("resources capability not advertised", init["capabilities"])
+	}
+	instructions := init["instructions"].(string)
+	if !strings.Contains(instructions, guideURI) {
+		t.Fatal("instructions do not point at the guide", instructions)
+	}
+
+	listed := mcpRequest(t, h, origin, `{"jsonrpc":"2.0","id":2,"method":"resources/list"}`)["resources"].([]any)
+	if len(listed) != 1 {
+		t.Fatal(listed)
+	}
+	if r := listed[0].(map[string]any); r["uri"] != guideURI || r["name"] != "guide" || r["mimeType"] != "text/plain" || r["description"] == "" {
+		t.Fatal(r)
+	}
+
+	contents := mcpRequest(t, h, origin, `{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"`+guideURI+`"}}`)["contents"].([]any)
+	if len(contents) != 1 {
+		t.Fatal(contents)
+	}
+	read := contents[0].(map[string]any)
+	guide, _ := read["text"].(string)
+	if read["uri"] != guideURI || read["mimeType"] != "text/plain" {
+		t.Fatal(read)
+	}
+	// One phrase from every part of the guide, so none is dropped when the prose is edited.
+	for _, part := range []string{
+		`slides (Markdown slides separated by --- lines; "Note:" starts speaker notes)`,
+		"React must default-export a component",
+		"Artifacts get Claude's capability runtime",
+		"search_artifacts has:open finds them",
+		"update_artifact with archived:true moves artifacts",
+		"When the person asks you to tidy up, archive what is stale",
+		"delete_artifact with ids permanently deletes archived artifacts",
+		"Do not manually transcribe base64 into source (2 MiB limit)",
+		"Autoplay needs muted playsinline",
+		"Apps are full-stack micro frontends",
+		"Before updating, get_artifact for the latest base_version",
+		"Give people links on https://shartifacts.example.com, e.g. https://shartifacts.example.com/a/{id}",
+		"Explicit user design instructions always override it",
+		"Upload URL: " + origin + "/api/media",
+		"--url '" + origin + "/api/media'",
+	} {
+		if !strings.Contains(guide, part) {
+			t.Fatalf("guide is missing %q", part)
+		}
+	}
+	// The summary is the short part; the guide carries the rest.
+	if len(instructions)*3 > len(guide) {
+		t.Fatalf("instructions (%d bytes) are not a summary of the guide (%d bytes)", len(instructions), len(guide))
+	}
+
+	r := httptest.NewRequest("POST", origin+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"shartifacts://other"}}`))
+	r.RemoteAddr = "192.168.1.9:1234"
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json, text/event-stream")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `"error"`) || strings.Contains(w.Body.String(), "Apps are full-stack") {
+		t.Fatalf("unknown resource read: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestMCPDesignSystemUsesWorkspaceCSS(t *testing.T) {
 	st, e := store.Open(t.TempDir())
 	if e != nil {

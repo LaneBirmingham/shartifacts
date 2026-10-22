@@ -154,12 +154,12 @@ func recentVersions(view map[string]any, a store.App, n int) {
 // is where the URLs it hands to people point (linkBase).
 func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 	type GetInput struct {
-		ID      string   `json:"id,omitempty" jsonschema:"An app; omit to list every app and the runtime"`
-		Guide   bool     `json:"guide,omitempty" jsonschema:"Return the build contract (stack, layout, backend contract, frontend rules, deploying) with this server's facts; read it before the first deploy"`
+		ID      string   `json:"id,omitempty"`
+		Guide   bool     `json:"guide,omitempty" jsonschema:"Read it before the first deploy"`
 		Version int      `json:"version,omitempty" jsonschema:"Version for files and logs; default the latest for files, the live one for logs"`
-		Files   []string `json:"files,omitempty" jsonschema:"Source files to return the contents of (text)"`
-		List    bool     `json:"list_files,omitempty" jsonschema:"Also list the version's files with sizes"`
-		Logs    bool     `json:"logs,omitempty" jsonschema:"Also return the version's backend output and state, build log and errors browsers reported"`
+		Files   []string `json:"files,omitempty"`
+		List    bool     `json:"list_files,omitempty"`
+		Logs    bool     `json:"logs,omitempty"`
 		Tail    int      `json:"tail,omitempty" jsonschema:"With logs: most recent lines (default 200)"`
 		All     bool     `json:"all_versions,omitempty" jsonschema:"List every version; by default the newest 10, plus the live one and versions links pin"`
 	}
@@ -219,18 +219,18 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 
 	type DeployInput struct {
 		ID          string            `json:"id,omitempty" jsonschema:"The app to deploy a new version of; omit to create an app (name required)"`
-		Name        string            `json:"name,omitempty" jsonschema:"Creating: the app's name"`
-		Description string            `json:"description,omitempty" jsonschema:"Creating: one sentence for its launcher card"`
+		Name        string            `json:"name,omitempty"`
+		Description string            `json:"description,omitempty"`
 		Icon        string            `json:"icon,omitempty" jsonschema:"Creating: one short generic word (chart, list, money, calendar, game, tool) or an emoji"`
 		Label       string            `json:"label,omitempty" jsonschema:"Creating: the subdomain of its public links when apps get hostnames of their own (get_app guide), e.g. budget; lowercase letters, digits and hyphens; default a generated one"`
 		Template    string            `json:"template,omitempty" jsonschema:"Creating: notes starts from a working React + Go app (files you send replace its files)"`
 		BaseVersion int               `json:"base_version,omitempty" jsonschema:"Deploying: the latest version (get_app's latest); a stale one is refused"`
 		Merge       bool              `json:"merge,omitempty" jsonschema:"Deploying: start from the latest version and apply files, remove and edits; otherwise the version is exactly files"`
-		Files       map[string]string `json:"files,omitempty" jsonschema:"Text files to add or replace by path: index.html, src/main.tsx, server/main.go, go.mod…"`
+		Files       map[string]string `json:"files,omitempty"`
 		BinaryFiles map[string]string `json:"binary_files,omitempty" jsonschema:"Base64 files by path (small images, a prebuilt server/app)"`
 		Remove      []string          `json:"remove,omitempty" jsonschema:"With merge: paths (files or directories) to delete"`
 		Edits       []store.Edit      `json:"edits,omitempty" jsonschema:"With merge: {file, old_str, new_str} against the latest version, old_str occurring once"`
-		Note        string            `json:"note,omitempty" jsonschema:"What changed"`
+		Note        string            `json:"note,omitempty"`
 		Promote     *bool             `json:"promote,omitempty" jsonschema:"Make it live once it builds (default true); false stages it for preview"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "deploy_app", Description: "Ship code: without an id, create an app with its first version; with one, deploy a new version. Each version is built, its backend started once, and (by default) made live. Prefer merge with edits or changed files for small changes. Returns the version's status (error and build log on failure) and its URLs."}, func(ctx context.Context, req *mcp.CallToolRequest, in DeployInput) (*mcp.CallToolResult, any, error) {
@@ -282,20 +282,20 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		// promote, call, share
 		Version int `json:"version,omitempty" jsonschema:"promote: the ready version to make live (rollback or forward); call: default live; share: a version to pin, or 0 to follow live"`
 		// update
-		Name        *string            `json:"name,omitempty" jsonschema:"update"`
-		Description *string            `json:"description,omitempty" jsonschema:"update"`
-		Icon        *string            `json:"icon,omitempty" jsonschema:"update"`
-		Pinned      *bool              `json:"pinned,omitempty" jsonschema:"update: pinned apps come first in the launcher"`
+		Name        *string            `json:"name,omitempty"`
+		Description *string            `json:"description,omitempty"`
+		Icon        *string            `json:"icon,omitempty"`
+		Pinned      *bool              `json:"pinned,omitempty"`
 		Label       *string            `json:"label,omitempty" jsonschema:"update: the subdomain of its public links, e.g. budget (lowercase letters, digits, hyphens; empty for the generated one). Links on its old hostnames redirect, but visitors' browser storage stays there, so set it before sharing"`
 		Env         map[string]*string `json:"env,omitempty" jsonschema:"update: backend variables and secrets to set (UPPER_SNAKE) or remove (null); values are never shown again; backends restart"`
 		// call
-		Method  string            `json:"method,omitempty" jsonschema:"call: default GET"`
+		Method  string            `json:"method,omitempty"`
 		Path    string            `json:"path,omitempty" jsonschema:"call: backend path, starting /api/"`
-		Body    string            `json:"body,omitempty" jsonschema:"call"`
-		Headers map[string]string `json:"headers,omitempty" jsonschema:"call: Content-Type defaults to application/json when there is a body"`
+		Body    string            `json:"body,omitempty"`
+		Headers map[string]string `json:"headers,omitempty"`
 		// share, unshare
-		ReadOnly bool   `json:"read_only,omitempty" jsonschema:"share: visitors may only read (GET/HEAD reach the backend)"`
-		Token    string `json:"token,omitempty" jsonschema:"unshare: the link's token (get_app lists links)"`
+		ReadOnly bool   `json:"read_only,omitempty"`
+		Token    string `json:"token,omitempty"`
 		// delete
 		Confirm string `json:"confirm,omitempty" jsonschema:"delete: the token the first call returned, after the person confirmed"`
 	}

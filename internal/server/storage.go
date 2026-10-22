@@ -9,10 +9,10 @@ import (
 // and results keep the shapes Claude's window.storage returns.
 type storageOp struct {
 	Op     string  `json:"op" jsonschema:"get, set, delete or list"`
-	Key    string  `json:"key,omitempty" jsonschema:"Key for get, set and delete"`
-	Value  *string `json:"value,omitempty" jsonschema:"String value for set (JSON.stringify objects)"`
-	Shared bool    `json:"shared,omitempty" jsonschema:"Use the shared scope instead of the personal one"`
-	Prefix string  `json:"prefix,omitempty" jsonschema:"Key prefix for list"`
+	Key    string  `json:"key,omitempty"`
+	Value  *string `json:"value,omitempty"`
+	Shared bool    `json:"shared,omitempty"`
+	Prefix string  `json:"prefix,omitempty"`
 }
 
 // runStorage returns nil for a get of a missing key, as window.storage.get resolves null.
