@@ -9,7 +9,7 @@ FROM golang:1.26-alpine AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY main.go ./
+COPY *.go ./
 COPY internal ./internal
 COPY web ./web
 COPY --from=frontend /src/web/vendor ./web/vendor

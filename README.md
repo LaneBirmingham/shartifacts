@@ -8,7 +8,7 @@ shartifacts is a small server you run once (on a home server, a NAS, a VPS or yo
 
 - **Made for agents.** A built-in MCP server lets Claude Code, Codex, Cursor and other agents create, edit, search and comment on artifacts and deploy apps. Artifacts written for Claude run unchanged: the same React libraries, shadcn/ui, Tailwind, `window.storage` and `claude.use(...)` capabilities.
 - **Apps that run.** Full-stack micro frontends: a React/TypeScript frontend with a Go (or prebuilt Rust) backend and its own data, deployed as versions you can preview and roll back, each open in a tab.
-- **Private by default.** No accounts, no cloud, no telemetry, no CDNs. It works offline. The workspace answers only your own network and tailnet.
+- **Private by default.** No cloud, no telemetry, no CDNs. It works offline. The workspace answers only your own network and tailnet, and an optional owner password, with a revocable token per agent, keeps out the people and devices on it you don't trust.
 - **Share when you want to.** Give it a hostname of your own and it serves read-only artifact links and public app links there, and nothing else.
 - **One process, one folder.** A single Go binary (or two small containers) keeps everything as plain files in one data folder you back up.
 
@@ -68,7 +68,7 @@ Then ask your agent for something, such as *"make me an interactive packing chec
 
 ## Security in one paragraph
 
-The workspace has **no login**. Anyone who can reach it can read, change and delete everything, so it accepts only loopback, private-network and Tailscale clients. It checks Host, Origin and Fetch Metadata headers against DNS rebinding and cross-site requests. It also refuses requests that a reverse proxy forwards from the internet. Public sharing uses a separate hostname, on which the server answers nothing except share pages. Artifacts and app pages run in an opaque-origin sandbox, and app backends run in a sidecar container that can see only the apps folder. Read [docs/security.md](docs/security.md) before exposing anything, and [SECURITY.md](SECURITY.md) to report a vulnerability.
+The workspace accepts only loopback, private-network and Tailscale clients, because anyone who can use it can read, change and delete everything. Sign-in is optional on top of that: set an owner password and browsers sign in once, while agents send a token you can revoke. It checks Host, Origin and Fetch Metadata headers against DNS rebinding and cross-site requests. It also refuses requests that a reverse proxy forwards from the internet. Public sharing uses a separate hostname, on which the server answers nothing except share pages. Artifacts and app pages run in an opaque-origin sandbox, and app backends run in a sidecar container that can see only the apps folder. Read [docs/security.md](docs/security.md) before exposing anything, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Documentation
 

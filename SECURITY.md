@@ -8,13 +8,15 @@ You should get a reply within a week. Fixes are released as soon as they are rea
 
 ## What counts
 
-shartifacts has no login by design. Anyone who can reach the workspace can do everything, so "someone on my LAN can delete artifacts" is expected behaviour, not a vulnerability. These are vulnerabilities, for example:
+Sign-in is optional and off by default. While it is off, anyone who can reach the workspace can do everything, so "someone on my LAN can delete artifacts" is expected behaviour, not a vulnerability. With an owner password set, it is one. These are vulnerabilities, for example:
 
 - Reaching the workspace, `/api` or `/mcp` from a public address, or through the share hostname, an app hostname or the public listener (port 8081)
 - Reading or changing anything with a share token beyond what that token grants, or writing through a read-only link
 - An artifact or app page escaping its sandbox to read the workspace or another artifact's data
 - An app backend escaping the runner sidecar or its Landlock confinement on a supported setup
 - DNS rebinding or cross-site request paths into the workspace
+- With sign-in on: using the workspace without the password or a valid token, keeping access after a token is revoked or a session ended, or managing the password and tokens with only a token
+- Recovering the password, a session or a token from what shartifacts stores or logs
 
 [docs/security.md](docs/security.md) describes the full model.
 

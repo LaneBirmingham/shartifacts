@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)" />
+    <meta name="robots" content="noindex" />
+    <title>Sign in — shartifacts</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/login.css" />
+    <link rel="stylesheet" href="/dark.css" />
+    <script src="/theme.js"></script>
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <main class="login">
+      <div class="login-top">
+        <span class="brand"
+          ><svg viewBox="0 0 40 40" fill="currentColor" aria-hidden="true">
+            <path
+              d="M18 2h4l1 13L33 6l3 3-10 10 12-1v4l-13 1 9 10-3 3-10-10 1 12h-4l-1-13L7 34l-3-3 10-10-12 1v-4l13-1L6 7l3-3 10 10z"
+            /></svg
+          >shartifacts</span
+        ><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button>
+      </div>
+      <form id="login-form" class="login-card">
+        <p class="eyebrow">SIGN IN</p>
+        <h1>Welcome back.</h1>
+        <p>This workspace is private. Sign in with its password.</p>
+        <input class="visually-hidden" name="username" value="owner" autocomplete="username" tabindex="-1" aria-hidden="true" />
+        <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required autofocus /></label>
+        <button class="primary" type="submit">Sign in</button>
+        <p class="form-error" id="login-error" role="alert"></p>
+      </form>
+      <p class="fineprint">
+        Forgot it? Whoever runs the server can set a new one with
+        <code>shartifacts auth set-password</code> (with Docker:
+        <code>docker compose exec shartifacts shartifacts auth set-password</code>).
+      </p>
+    </main>
+  </body>
+</html>

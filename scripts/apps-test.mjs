@@ -219,6 +219,24 @@ try {
   const status = await visitor.evaluate(() => fetch("api/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"text":"sneaky"}' }).then((r) => r.status));
   assert.equal(status, 403);
 
+  // With sign-in on, the hub's frame still loads the app with a session (the frame's request
+  // carries the SameSite=Lax cookie), while the backend refuses anyone not signed in. The
+  // agent needs a token from now on.
+  await page.evaluate(() => fetch("/api/auth/password", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"password":"correct horse"}' }));
+  assert.equal((await fetch(`${base}/run/${id}/live/api/notes`)).status, 401, "backend without sign-in");
+  await page.goto(`${base}/apps/${id}`);
+  await frame.getByLabel("New note").fill("Signed in");
+  await frame.getByRole("button", { name: "Add note" }).click();
+  await expect(frame.getByText("Signed in")).toBeVisible();
+  await assert.rejects(client.listTools());
+  await client.close().catch(() => {});
+  const { token } = await page.evaluate(() => fetch("/api/auth/tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"name":"apps test"}' }).then((r) => r.json()));
+  client = new Client({ name: "apps-test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp"), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  // Public links never ask.
+  await visitor.goto(shareURL);
+  await expect(visitor.getByText("Signed in")).toBeVisible();
+
   // Mobile hub.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/apps-tab-mobile.png" });
@@ -253,7 +271,7 @@ try {
   assert.equal((await fetch(`${base}/run/${id}/live/`)).status, 404);
 
   assert.deepEqual(errors, [], "browser errors");
-  console.log("PASS: apps hub — MCP get_app (guide, list, files, logs) / deploy_app (create, edit) / manage_app (call, share, delete), launcher, tabs (open, restore, switch, close), sandboxed frontend calling its Go backend (fetch and plain forms), rollback, live-deploy notice, logs drawer, secrets, public links (full and read-only) on the app's own hostname with persistent localStorage, cookies and IndexedDB kept apart from other apps, localStorage kept by the hub, mobile layouts, artifacts workspace at /artifacts.");
+  console.log("PASS: apps hub — MCP get_app (guide, list, files, logs) / deploy_app (create, edit) / manage_app (call, share, delete), launcher, tabs (open, restore, switch, close), sandboxed frontend calling its Go backend (fetch and plain forms), rollback, live-deploy notice, logs drawer, secrets, public links (full and read-only) on the app's own hostname with persistent localStorage, cookies and IndexedDB kept apart from other apps, localStorage kept by the hub, mobile layouts, artifacts workspace at /artifacts, and sign-in (app sessions only for signed-in frames, backends closed to everyone else, agent tokens, public links unaffected).");
 } finally {
   if (client) await client.close();
   if (browser) await browser.close();

@@ -40,7 +40,7 @@ Gallery thumbnails get a read-only runtime: they read data but their writes are 
 
 ### People
 
-There are no accounts. **Who are you?** in the top bar lets each person pick or add their name (and colour); the browser remembers it. That identity is what artifacts see through `user`, keys each person's private `data/users/<id>/` documents and `room` presence, records who created an artifact, and signs comments. Anyone on the network can pick any name: it keeps people's data apart, it is not authentication.
+There are no accounts (the optional owner password is one for everyone). **Who are you?** in the top bar lets each person pick or add their name (and colour); the browser remembers it. That identity is what artifacts see through `user`, keys each person's private `data/users/<id>/` documents and `room` presence, records who created an artifact, and signs comments. Anyone who can use the workspace can pick any name: it keeps people's data apart, it is not authentication.
 
 ### Connectors
 

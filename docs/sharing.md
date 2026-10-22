@@ -20,7 +20,7 @@ Sharing is off until you set `SHARTIFACTS_SHARE_ORIGIN`. [modes.md](modes.md) he
    - [Your own reverse proxy](reverse-proxies.md): nginx, Nginx Proxy Manager, Traefik or another proxy you already run.
 3. Optionally, **a hostname per app** (`SHARTIFACTS_APP_ORIGIN`), so app pages keep browser storage. See [below](#apps-on-hostnames-of-their-own).
 
-Whatever the edge, route **only** the share hostname (and the app hostnames), and route them to port **8081**. Never route the workspace's own hostname, or port 8080, from the internet: it has no login. If a proxy does forward a workspace request from a public address, shartifacts refuses it (see [security.md](security.md#behind-a-reverse-proxy)), but do not rely on that alone.
+Whatever the edge, route **only** the share hostname (and the app hostnames), and route them to port **8081**. Never route the workspace's own hostname, or port 8080, from the internet: it is built for your networks only, and its sign-in is optional. If a proxy does forward a workspace request from a public address, shartifacts refuses it (see [security.md](security.md#behind-a-reverse-proxy)), but do not rely on that alone.
 
 ## Caddy (bundled)
 

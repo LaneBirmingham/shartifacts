@@ -24,7 +24,7 @@ Run `npm run test:browser` when you change `web/`, and `npm run test:apps` when 
 
 Conventions:
 
-- **Security first.** `internal/server/server.go` (`guard`) and `forwarded.go` decide who reaches anything; `share.go` and `apps_serve.go` decide what the public hostnames serve. Changes there need a test in the matching `*_test.go` that shows both what is allowed and what is refused. Never trust forwarded headers to *grant* access.
+- **Security first.** `internal/server/server.go` (`guard`) and `forwarded.go` decide who reaches anything, and `auth.go` (with `internal/auth`) who is signed in; `share.go` and `apps_serve.go` decide what the public hostnames serve. Changes there need a test in the matching `*_test.go` that shows both what is allowed and what is refused. Never trust forwarded headers to *grant* access.
 - **Comments say why**, in full sentences, as the surrounding code does. Match the existing style rather than adding a framework or a new dependency. The standard library comes first.
 - **Settings** are flags in `internal/config`, each with a `SHARTIFACTS_*` variable. A new one also goes in `compose.yaml` (when Compose users need it), `.env.example` and `docs/configuration.md`.
 - **Docs move with behaviour.** Update the page in `docs/` that describes what you changed, and the setup skill if setup or the modes change.

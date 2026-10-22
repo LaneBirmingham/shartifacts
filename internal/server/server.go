@@ -17,12 +17,14 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/LaneBirmingham/shartifacts/internal/auth"
 	"github.com/LaneBirmingham/shartifacts/internal/runner"
 	"github.com/LaneBirmingham/shartifacts/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -51,6 +53,9 @@ type Server struct {
 	// AuthProxy accepts workspace requests a proxy forwards from public addresses: the
 	// operator says that proxy authenticates people. Otherwise they are refused (forwarded.go).
 	AuthProxy bool
+	// Auth is the workspace's own sign-in (auth.go), on once an owner password is set. Nil
+	// opens the data directory's.
+	Auth *auth.Store
 	// NoChunkUpload hides begin_media_upload/upload_media_chunk (shell agents use the curl upload).
 	NoChunkUpload bool
 	// Claude answers window.claude.complete and the sample capability; nil leaves it off.
@@ -60,6 +65,9 @@ type Server struct {
 	// Runtime builds and runs app backends: a runner sidecar (runner.Remote), or nil to run
 	// them beside this process.
 	Runtime       runner.Runtime
+	attempts      passwordAttempts
+	grantKeyOnce  sync.Once
+	grantKeyBytes []byte
 	appKeyOnce    sync.Once
 	appSessionKey []byte
 	appLabelOnce  sync.Once
@@ -117,6 +125,13 @@ func (s *Server) build() http.Handler {
 		if s.Runtime == nil {
 			s.Runtime = &runner.Local{Dir: s.Store.AppsDir()}
 		}
+		if s.Auth == nil {
+			a, err := auth.Open(s.Store.Dir())
+			if err != nil {
+				panic(fmt.Sprintf("sign-in state: %v", err))
+			}
+			s.Auth = a
+		}
 	})
 	mux := http.NewServeMux()
 	s.connectors.list = s.Connectors
@@ -125,18 +140,12 @@ func (s *Server) build() http.Handler {
 	s.shareRoutes(mux)
 	s.searchRoutes(mux)
 	s.appRoutes(mux)
+	s.authRoutes(mux)
 	mux.HandleFunc("GET /api/media", func(w http.ResponseWriter, r *http.Request) {
 		items, e := s.Store.ListMedia()
 		respond(w, 200, map[string]any{"media": items}, e)
 	})
-	mux.HandleFunc("POST /api/media", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, store.MaxMedia+1)
-		media, e := s.Store.SaveMedia(r.Header.Get("Content-Type"), r.Body)
-		if e == nil && r.URL.Query().Has("name") {
-			media, e = s.Store.NameMedia(media, r.URL.Query().Get("name"))
-		}
-		respond(w, 201, media, e)
-	})
+	mux.HandleFunc("POST /api/media", s.uploadMedia)
 	mux.HandleFunc("GET /media/{id}", func(w http.ResponseWriter, r *http.Request) { s.serveMedia(w, r, r.PathValue("id")) })
 	mux.HandleFunc("GET /api/artifacts", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.Store.List()) })
 	mux.HandleFunc("POST /api/artifacts", func(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +271,7 @@ func (s *Server) build() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		scheme := s.clientScheme(r)
-		return s.mcpServer(scheme + "://" + r.Host)
+		return s.mcpServer(scheme+"://"+r.Host, s.uploadPath(r))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 12 << 20}))
 	files := http.FileServer(http.FS(s.Web))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -270,24 +279,13 @@ func (s *Server) build() http.Handler {
 			http.Error(w, "method not allowed", 405)
 			return
 		}
-		page := ""
-		switch {
-		case r.URL.Path == "/" || r.URL.Path == "/apps" || strings.HasPrefix(r.URL.Path, "/apps/"):
-			page = "hub.html"
-		case r.URL.Path == "/artifacts" || strings.HasPrefix(r.URL.Path, "/a/"):
-			page = "index.html"
-		case strings.HasPrefix(r.URL.Path, "/view/"):
-			page = "view.html"
+		if page := workspacePage(r.URL.Path); page != "" {
+			s.writePage(w, page)
+			return
 		}
-		if page != "" {
-			b, e := fs.ReadFile(s.Web, page)
-			if e != nil {
-				http.Error(w, "UI unavailable", 500)
-				return
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
-			w.Write(b)
+		// The UI's pages are served only by their routes, with the page CSP.
+		if path.Ext(r.URL.Path) == ".html" {
+			http.NotFound(w, r)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/vendor/") {
@@ -329,6 +327,50 @@ func (s *Server) etag(path string) string {
 	s.etags.Store(path, tag)
 	return tag
 }
+
+// dotSegments reports whether a decoded URL path has a "." or ".." segment.
+func dotSegments(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// workspacePage is the page of the UI a path shows, or "".
+func workspacePage(p string) string {
+	switch {
+	case p == "/" || p == "/apps" || strings.HasPrefix(p, "/apps/"):
+		return "hub.html"
+	case p == "/artifacts" || strings.HasPrefix(p, "/a/"):
+		return "index.html"
+	case strings.HasPrefix(p, "/view/"):
+		return "view.html"
+	}
+	return ""
+}
+
+func (s *Server) writePage(w http.ResponseWriter, page string) {
+	b, e := fs.ReadFile(s.Web, page)
+	if e != nil {
+		http.Error(w, "UI unavailable", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+	w.Write(b)
+}
+
+func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, store.MaxMedia+1)
+	media, e := s.Store.SaveMedia(r.Header.Get("Content-Type"), r.Body)
+	if e == nil && r.URL.Query().Has("name") {
+		media, e = s.Store.NameMedia(media, r.URL.Query().Get("name"))
+	}
+	respond(w, 201, media, e)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -436,6 +478,13 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "invalid peer", 403)
 			return
 		}
+		// Browsers resolve dot segments before sending a URL, and the mux redirects the ones
+		// written plainly, but encoded ones (%2e%2e) arrive decoded in the path. Each check
+		// below reads the path by its prefix, so "/s/../hub.html" must not get that far.
+		if dotSegments(r.URL.Path) {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
 		ip, e := netip.ParseAddr(host)
 		public := r.Context().Value(publicListenerKey{}) != nil
 		if !public && (e != nil || !localIP(ip)) {
@@ -519,6 +568,14 @@ func (s *Server) guard(next http.Handler) http.Handler {
 				r.Header.Get("Sec-Fetch-Dest") == "document"
 			if !navigation && !((r.Method == "GET" || r.Method == "HEAD") && sandboxReadable(r.URL.Path)) {
 				http.Error(w, "cross-site request denied", 403)
+				return
+			}
+		}
+		// Last, with every network check passed: the workspace's own sign-in, when a
+		// password is set (auth.go). Share and app hostnames are public by design.
+		if !appHost && !s.isShareHost(r) {
+			var ok bool
+			if r, ok = s.signInGate(w, r); !ok {
 				return
 			}
 		}

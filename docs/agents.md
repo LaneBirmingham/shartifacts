@@ -53,7 +53,29 @@ url = "http://192.168.1.20:8080/mcp"
 
 **Anything else**: give the client a remote MCP server, transport **Streamable HTTP** (sometimes called just "HTTP"), with the URL above. Most `mcpServers` files accept `{"type": "http", "url": "…"}`.
 
-The server uses the official Go MCP SDK in stateless JSON-response mode. No SSE subscription, session ID or authentication is needed, and it accepts the current protocol and older SDK-negotiated initializations. When it starts, an agent receives instructions describing artifacts, media uploads, apps and the design system, so a prompt such as *"make me a packing checklist in shartifacts"* is enough.
+### With sign-in on
+
+Once the workspace has an owner password ([security.md](security.md#sign-in)), agents need a token too, sent as `Authorization: Bearer shx_…`. Without one, `/mcp` answers `401` with a message saying how to get one. Make a token per agent, so you can revoke one without touching the others:
+
+- **Connect an agent** asks for a name, makes the token and fills it into the commands, or
+- **Sign-in** in the workspace lists, makes and revokes tokens, or
+- on the server: `shartifacts auth token "Codex on my laptop"` (with Docker, `docker compose exec shartifacts shartifacts auth token NAME`) prints one.
+
+A token is shown only once. Then add it to the client:
+
+```sh
+claude mcp add --transport http --scope user shartifacts http://192.168.1.20:8080/mcp \
+  --header "Authorization: Bearer shx_…"                                   # Claude Code
+
+export SHARTIFACTS_TOKEN=shx_…        # in your shell profile too, so Codex always has it
+codex mcp add shartifacts --url http://192.168.1.20:8080/mcp --bearer-token-env-var SHARTIFACTS_TOKEN
+```
+
+In configuration files, add the header next to the URL: `"headers": {"Authorization": "Bearer shx_…"}` for Cursor, VS Code and Gemini CLI, and `bearer_token_env_var = "SHARTIFACTS_TOKEN"` in Codex's `config.toml`. With `mcp-remote`, add `"--header", "Authorization:${AUTH_HEADER}"` to `args` and `"env": {"AUTH_HEADER": "Bearer shx_…"}`.
+
+Tokens can do everything in the workspace except manage the password and tokens. Media upload URLs that tools hand out to an agent's shell carry a signed grant instead of the token, which lasts an hour, or until the token is revoked; `list_media` gives a fresh one. When an agent calls an app's backend with its token (`curl …/run/ID/live/api/…`), shartifacts removes the token before the backend sees the request.
+
+The server uses the official Go MCP SDK in stateless JSON-response mode. No SSE subscription or session ID is needed (only a token, once sign-in is on), and it accepts the current protocol and older SDK-negotiated initializations. When it starts, an agent receives instructions describing artifacts, media uploads, apps and the design system, so a prompt such as *"make me a packing checklist in shartifacts"* is enough.
 
 Links that tools hand out for people use `SHARTIFACTS_PUBLIC_ORIGIN` when it is set, so an agent connected by LAN address still gives you `https://…` links you can open anywhere on your tailnet.
 

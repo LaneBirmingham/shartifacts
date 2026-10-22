@@ -2,7 +2,7 @@
 
 shartifacts is meant to be set up once, in one place, and then left alone. How you run it depends on two questions:
 
-1. **Who opens the workspace?** Only you on this machine, everyone on your home network, or you from anywhere through Tailscale. The workspace has no login, so it is never opened from the open internet.
+1. **Who opens the workspace?** Only you on this machine, everyone on your home network, or you from anywhere through Tailscale. The workspace is never opened from the open internet, even with sign-in on. An optional owner password ([security.md](security.md#sign-in)) keeps out the people and devices on your network you don't trust.
 2. **Do you want public links?** If you do, you need a domain of your own, and something on the internet (an "edge") that brings visitors to the share hostname.
 
 | | Private | Public sharing | Public sharing via a provider |

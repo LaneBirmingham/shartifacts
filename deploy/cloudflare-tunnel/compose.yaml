@@ -9,7 +9,7 @@
 # The tunnel's public hostnames and their routes live in Cloudflare (dashboard or API):
 # route the share hostname (and app hostnames), and nothing else, to http://shartifacts:8081,
 # the port that serves only share and app links. Never route the workspace (port 8080)
-# through a tunnel: shartifacts has no login. See docs/sharing.md.
+# through a tunnel: it is for your own networks only. See docs/sharing.md.
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest

@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// The workspace has no login: who can reach it is the whole of its access control, and the
-// peer allowlist in guard enforces that for direct connections. A reverse proxy hides the
+// The workspace is for private networks: who can reach it is its first access control
+// (sign-in, when it is on, comes after), and the peer allowlist in guard enforces that for
+// direct connections. A reverse proxy hides the
 // peer, because every request then arrives from the proxy's own private address. If that
 // proxy is also reachable from the internet for the workspace's hostname (a Caddy or nginx
 // on the same VPS, a Cloudflare tunnel with the wrong hostname), the allowlist passes
@@ -75,7 +76,7 @@ var lastForwardedLog atomic.Int64
 func refuseForwardedPublic(w http.ResponseWriter, r *http.Request, client string) {
 	now := time.Now().Unix()
 	if last := lastForwardedLog.Load(); now-last >= 60 && lastForwardedLog.CompareAndSwap(last, now) {
-		log.Printf("refused %s %s for %s: a proxy forwarded it from public address %s. The workspace has no login and must stay on your LAN or tailnet: publish only the share hostname, or start with -auth-proxy if the proxy authenticates people", r.Method, r.URL.Path, r.Host, client)
+		log.Printf("refused %s %s for %s: a proxy forwarded it from public address %s. The workspace must stay on your LAN or tailnet: publish only the share hostname, or start with -auth-proxy if the proxy authenticates people", r.Method, r.URL.Path, r.Host, client)
 	}
-	http.Error(w, "local network access only: this request reached the workspace through a proxy from a public address. shartifacts has no login, so the workspace stays on your LAN or tailnet; only share links are public.", 403)
+	http.Error(w, "local network access only: this request reached the workspace through a proxy from a public address. the workspace stays on your LAN or tailnet, with or without sign-in; only share links are public.", 403)
 }

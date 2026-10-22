@@ -4,7 +4,7 @@ shartifacts listens on two ports, and a proxy needs to know which one it is talk
 
 | Port | Serves | Who may reach it |
 | --- | --- | --- |
-| **8080**, the workspace | The UI, `/api`, `/mcp`, previews and media. Everything. | Only you: this machine, your LAN, your tailnet. **No login**, so never route it from the internet. |
+| **8080**, the workspace | The UI, `/api`, `/mcp`, previews and media. Everything. | Only you: this machine, your LAN, your tailnet. Sign-in is optional, so never route it from the internet. |
 | **8081**, the public listener (only with `SHARTIFACTS_SHARE_ORIGIN`) | Share links (`/s/…`), public app links (`/p/…`) and the files they load. Nothing else, whatever `Host` arrives. | Anyone. This is what your edge forwards to. |
 
 Each port has its own proxy rules:

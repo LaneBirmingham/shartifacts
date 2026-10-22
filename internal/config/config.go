@@ -78,7 +78,7 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.StringVar(&c.PublicOrigin, "public-origin", "", "the https:// address people use for the workspace when a TLS-terminating proxy fronts it, e.g. https://myserver.tailnet.ts.net (tailscale serve) or https://shartifacts.example.com. Links agents hand out use it. Empty when people reach the app directly")
 	fs.StringVar(&c.ShareOrigin, "share-origin", "", "public hostname for read-only artifact links and public app links, e.g. https://share.example.com. On it the server answers only share pages, never the workspace. Empty keeps everything private")
 	fs.StringVar(&c.AppOrigin, "app-origin", "", "with -share-origin: a wildcard origin giving each app's public links a hostname of its own, e.g. https://*.share.example.com, so app pages keep localStorage, IndexedDB and cookies. Needs wildcard DNS and certificates (see docs/sharing.md)")
-	fs.BoolVar(&c.AuthProxy, "auth-proxy", false, "the reverse proxy in front of the workspace authenticates everyone it forwards (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests a proxy forwards from a public address are refused, because shartifacts has no login of its own")
+	fs.BoolVar(&c.AuthProxy, "auth-proxy", false, "the reverse proxy in front of the workspace authenticates everyone it forwards (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests a proxy forwards from a public address are refused, because the workspace is for private networks, with or without its own sign-in")
 	fs.BoolVar(&c.NoChunkUpload, "no-chunk-upload", false, "hide the base64 chunked-upload MCP tools to save agent context (the HTTP upload stays available)")
 	fs.StringVar(&c.ClaudeModel, "claude-model", "claude-opus-5-5", "model behind window.claude.complete and claude.use(\"sample\"), which are on only when ANTHROPIC_API_KEY is set")
 	fs.StringVar(&c.Connectors, "connectors", "", "JSON file of MCP servers artifacts may call through claude.use(\"mcp\"): [{\"name\", \"url\", \"headers\"}]; credentials stay on this server")
@@ -90,7 +90,7 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.IntVar(&c.AppProcs, "app-procs", 16, "most app backends running at once; the least recently used stops to make room")
 	fs.DurationVar(&c.AppIdle, "app-idle", 15*time.Minute, "stop an app backend after this long without requests")
 	fs.Usage = func() {
-		fmt.Fprintf(out, "Usage: shartifacts [flags]\n\nEvery flag can also be set with an environment variable: -share-origin is %s.\nA flag on the command line wins over the environment.\n\n", EnvName("share-origin"))
+		fmt.Fprintf(out, "Usage: shartifacts [flags]\n       shartifacts auth COMMAND   (sign-in: shartifacts auth help)\n\nEvery flag can also be set with an environment variable: -share-origin is %s.\nA flag on the command line wins over the environment.\n\n", EnvName("share-origin"))
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

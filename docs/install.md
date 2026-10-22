@@ -18,6 +18,8 @@ docker compose logs shartifacts | head   # the first lines name the mode
 
 Then open `http://localhost:8080` (or `http://<this machine's LAN IP>:8080` if you set `SHARTIFACTS_BIND`), and [connect your agent](agents.md).
 
+If anyone or anything you don't trust shares your network, set an owner password under **Sign-in** in the workspace (or `docker compose exec shartifacts shartifacts auth set-password`). Browsers then sign in once, and agents connect with a token that **Connect an agent** makes for you. [security.md](security.md#sign-in) explains it.
+
 Compose runs two containers:
 
 - **`shartifacts`** is the workspace, MCP server and share pages.
@@ -82,7 +84,7 @@ Everything shartifacts keeps is in the data folder (`SHARTIFACTS_DATA`, `./data`
 | `db/`, `storage/`, `assets/`, `comments/` | Each artifact's documents, `window.storage`, uploads and comment threads |
 | `media/` | The Media library |
 | `apps/` | Apps: every version's source and build, their data (`apps/<id>/data/`) and settings |
-| `meta/` | People, share links and server secrets (session and label keys) |
+| `meta/` | People, share links, server secrets (session and label keys) and, with sign-in on, `auth.json`: the password hash and the digests of sessions and tokens |
 
 For a consistent snapshot, stop the stack briefly:
 
@@ -119,6 +121,8 @@ Files are written to a temporary file, synced, and renamed into place, so a cras
 | `host not allowed` | You opened it by a hostname shartifacts does not know. Add it to `SHARTIFACTS_ALLOWED_HOSTS`, or use the LAN IP. |
 | `local network access only` | The client's address is public, or a proxy forwarded a public client to the workspace. Keep the workspace on your LAN or tailnet ([security.md](security.md#behind-a-reverse-proxy)). |
 | The page loads behind an HTTPS proxy, but the library is empty | Set `SHARTIFACTS_PUBLIC_ORIGIN` to the `https://` address you use. |
+| The login page appears, and you have lost the password | On the server: `docker compose exec shartifacts shartifacts auth set-password` sets a new one, or `… auth off` turns sign-in off. |
+| An agent gets `401 unauthenticated` | Sign-in is on: give the agent a token ([agents.md](agents.md#with-sign-in-on)). A revoked token gets the same answer. |
 | `permission denied` on start | The data folder is not writable by UID 10001: `sudo chown -R 10001:10001 data`. |
 | Can't reach it from another device | `SHARTIFACTS_BIND` is `127.0.0.1` (the default). Set it to `0.0.0.0` or the LAN IP, and check the host firewall. |
 | Apps: "app runner unreachable" | The runner starts after shartifacts is healthy. Wait a minute, then run `docker compose logs runner`. |

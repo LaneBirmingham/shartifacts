@@ -17,7 +17,8 @@ You are setting up shartifacts for a person, end to end: questions, plan, instal
 
 ## What you are setting up
 
-- The **workspace** (port 8080) is the UI plus the MCP endpoint `/mcp`. It has **no login**: anyone who reaches it can read, change and delete everything, and can deploy code that runs on the server. It must only ever be reachable from the machine itself, the person's LAN, or their tailnet.
+- The **workspace** (port 8080) is the UI plus the MCP endpoint `/mcp`. Anyone who can use it can read, change and delete everything, and can deploy code that runs on the server. It must only ever be reachable from the machine itself, the person's LAN, or their tailnet.
+- **Sign-in** is optional and off until an owner password is set. Then browsers sign in once and agents send a token (`Authorization: Bearer shx_…`) that can be revoked. It keeps out people and devices on the person's own network; it never makes the workspace safe to expose to the internet.
 - **Public sharing** is optional. With `SHARTIFACTS_SHARE_ORIGIN` set, a second port (8081) serves only read-only artifact links and public app links on a hostname of the person's own. An edge (the bundled Caddy, a Cloudflare tunnel, or their own proxy) brings the internet to port 8081, and only to port 8081.
 - Docker Compose runs two containers, `shartifacts` and `shartifacts-runner` (app backends), plus `shartifacts-caddy` or `shartifacts-cloudflared` when an edge is enabled. All settings live in `.env` next to `compose.yaml`.
 
@@ -25,7 +26,7 @@ You are setting up shartifacts for a person, end to end: questions, plan, instal
 
 1. **Never expose the workspace to the internet.** Do not forward port 8080, do not `tailscale funnel` it, do not route its hostname through a tunnel or a public proxy host, and never set `SHARTIFACTS_AUTH_PROXY` unless the person has an authenticating proxy (Cloudflare Access, Authelia, oauth2-proxy) and asks for it.
 2. **Ask before you act on anything outside the install folder**: installing packages or Docker, changing firewall rules, router port forwarding, DNS records, Cloudflare or Tailscale settings, existing reverse proxies, or anything else already running on the machine. Show the exact change first. Read-only checks need no permission.
-3. **Secrets**: when you need an API token (Cloudflare, Anthropic), ask the person to put it in `.env` themselves, or to paste it if they prefer. Never echo it back, never write it anywhere except `.env` (mode 600) or a shell variable, and never commit it.
+3. **Secrets**: when you need an API token (Cloudflare, Anthropic), ask the person to put it in `.env` themselves, or to paste it if they prefer. Never echo it back, never write it anywhere except `.env` (mode 600) or a shell variable, and never commit it. The same goes for agent tokens, which belong only in the agent's own MCP configuration. Let the person choose the owner password themselves, in the browser; do not ask them to tell it to you.
 4. **Verify every step** with the checks below before moving on, and report failures honestly, with the output. A `curl` 200 proves that a socket works, not that the page does: open the UI as well when you can.
 5. Prefer the defaults. Change only what the chosen mode needs.
 
@@ -36,14 +37,15 @@ Ask these questions in one message, with the defaults shown, and wait for the an
 1. **Where should it run?** This machine, or another one you can reach over SSH (which host and user?). What is that machine? A Linux server or VPS, Unraid, a NAS, a Raspberry Pi, or a Mac/Windows desktop?
 2. **Who should open the workspace?** (a) only that machine, (b) everyone on the home network, (c) the person from anywhere, through Tailscale. Default: (b) at home, (c) on a VPS.
 3. **Public links?** No (default). Or yes: which domain and which hostname (default `share.<domain>`), who hosts its DNS, and can the internet reach that machine on ports 80/443 (a VPS, or a router they can forward ports on)? Do they already run a reverse proxy, or use Cloudflare? Do they want a hostname per app (`*.share.<domain>`; recommended if they will share apps)?
-4. **Optional extras**: an Anthropic API key so artifacts can call Claude (default: none, fully offline).
-5. **Which agents** should be connected besides you (Claude Code, Codex, Cursor, VS Code, Gemini CLI, Claude Desktop)?
+4. **A password?** Should browsers sign in and agents need a token? Recommended when guests, smart devices or other people share the network or tailnet. Default: yes for the home network and Tailscale plans, no for this machine only. They choose the password themselves.
+5. **Optional extras**: an Anthropic API key so artifacts can call Claude (default: none, fully offline).
+6. **Which agents** should be connected besides you (Claude Code, Codex, Cursor, VS Code, Gemini CLI, Claude Desktop)?
 
 Do not ask what you can find out yourself (OS, architecture, Docker version, free ports, whether Tailscale is installed): check those in step 3.
 
 ## 2. Plan
 
-Map the answers to a plan with this table, then show it to the person: the mode, what you will install, every setting in `.env`, and every external change (DNS records, firewall rules, port forwards, tunnel, Tailscale). Wait for a yes.
+Map the answers to a plan with this table, then show it to the person: the mode, what you will install, every setting in `.env`, whether sign-in will be on, and every external change (DNS records, firewall rules, port forwards, tunnel, Tailscale). Wait for a yes. Sign-in is not a setting in `.env`; it is turned on in step 7, after the checks.
 
 | Situation | Plan |
 | --- | --- |
@@ -132,14 +134,36 @@ With public sharing, test from **outside** the network. If you are on the same n
   Open the returned `url` from outside. It should show "It works". Then delete the test artifact (`curl -X DELETE "http://127.0.0.1:8080/api/artifacts/$A?base_version=1"`), which also ends its link.
 - With app hostnames: the first visit to an app's hostname takes a few seconds while Caddy gets its certificate.
 
-## 7. Connect agents
+If sign-in is already on (an upgrade, or data from an earlier install), the API checks above answer `401`: make a token as in step 7 and add `-H "Authorization: Bearer $TOKEN"` to them.
 
-Connect yourself first, then the others the person named (`docs/agents.md` has every client). Use the workspace address that works from where each agent runs: `http://<LAN-IP>:8080/mcp`, `https://<machine>.<tailnet>.ts.net/mcp`, or `http://localhost:8080/mcp` on the same machine or through an SSH tunnel.
+## 7. Sign-in and agents
+
+**Sign-in, if planned.** Ask the person to open the workspace, choose **Set a password** (the lock in the top bar, or **Sign-in** in the sidebar), and save the password in their password manager. Then check:
+
+```sh
+docker compose exec shartifacts shartifacts auth status          # "Sign-in is on"
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/config   # 401
+```
+
+If they would rather you did it, `docker compose exec shartifacts shartifacts auth new-password` makes one up and prints it once; tell them to store it, and do not repeat it afterwards. A lost password is reset the same way, or with `auth set-password`.
+
+**Connect agents.** Connect yourself first, then the others the person named (`docs/agents.md` has every client). Use the workspace address that works from where each agent runs: `http://<LAN-IP>:8080/mcp`, `https://<machine>.<tailnet>.ts.net/mcp`, or `http://localhost:8080/mcp` on the same machine or through an SSH tunnel.
+
+Without sign-in:
 
 ```sh
 claude mcp add --transport http --scope user shartifacts <URL>     # Claude Code
 codex mcp add shartifacts --url <URL>                              # Codex
 ```
+
+With sign-in on, give each agent its own token, named for it, so the person can revoke one alone. Keep the token in a shell variable and pass it straight to the client:
+
+```sh
+TOKEN=$(docker compose exec -T shartifacts shartifacts auth token "Claude Code on <machine>")
+claude mcp add --transport http --scope user shartifacts <URL> --header "Authorization: Bearer $TOKEN"
+```
+
+For Codex, the token goes in an environment variable that Codex reads (`--bearer-token-env-var SHARTIFACTS_TOKEN`), which the person must also export in their shell profile; the person can instead use **Connect an agent** in the workspace, which makes a token and shows the commands with it filled in.
 
 Then prove that it works end to end: create a small artifact through the MCP tools (for example a one-screen "Hello from <agent>" HTML page), give the person its link, and delete it afterwards if they don't want it.
 
@@ -149,6 +173,7 @@ Finish with a short summary for the person:
 
 - The workspace address(es) and the MCP URL; the share hostname if any
 - The mode, and what is reachable from where
+- Whether sign-in is on, the names of the tokens you made, and that **Sign-in** in the workspace revokes them
 - Where the install and data folders are, how to back up (`docs/install.md#back-up-and-restore`) and upgrade (`git pull && docker compose up -d --build`)
 - Anything left for them to do (a router port forward, a Tailscale admin toggle), and anything that failed
 
@@ -157,4 +182,5 @@ Finish with a short summary for the person:
 - **Change mode**: edit `.env` (add or remove `SHARTIFACTS_SHARE_ORIGIN` and `COMPOSE_FILE`), then `docker compose up -d`. Turning sharing off ends public access at once. Links come back if it is turned on again with the same hostname.
 - **Move to another machine**: stop the stack, copy the data folder and `.env`, install there, then start.
 - **Upgrade**: read `CHANGELOG.md` for `.env` changes, then `git pull && docker compose up -d --build`.
+- **Sign-in**: turn it on or off, change the password or revoke tokens under **Sign-in** in the workspace. A lost password: `docker compose exec shartifacts shartifacts auth set-password`; it lists the agent tokens that still work, and if someone else may have known the old password, `… auth revoke all` ends them (then reconnect the agents with new ones). An agent that suddenly gets `401` needs a token (or a new one, if its token was revoked).
 - **Troubleshooting**: `docs/install.md#troubleshooting`. Look at `docker compose logs shartifacts` first: refusals log why.

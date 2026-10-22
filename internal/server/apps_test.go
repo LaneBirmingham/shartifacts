@@ -106,8 +106,8 @@ func TestApps(t *testing.T) {
 
 	// Backend material is never served; client-side routes get the page.
 	for _, p := range []string{"server/main.go", "go.mod", "shartifacts.json", "src/../server/main.go"} {
-		// The mux redirects a path with .. to its clean form, which is refused in turn.
-		if w := call(h, "GET", live+p, ""); w.Code != 404 && w.Code != 307 || strings.Contains(w.Body.String(), "package main") {
+		// guard refuses a path with a .. segment outright.
+		if w := call(h, "GET", live+p, ""); w.Code != 404 && w.Code != 400 || strings.Contains(w.Body.String(), "package main") {
 			t.Fatalf("%s served: %d", p, w.Code)
 		}
 	}

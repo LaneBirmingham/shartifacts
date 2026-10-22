@@ -119,7 +119,7 @@ DEPLOYING
 - Shell agents can upload a zip or tar.gz of the project (one top-level folder is unwrapped):
   curl --fail-with-body -H 'Content-Type: application/zip' --data-binary @app.zip '{BASE}/api/apps/ID/deployments?note=what+changed'
   (new app: POST {BASE}/api/apps?name=My+App). Add &merge=true to overlay the previous version, &promote=false to stage. Up to 256 MiB and 5000 files.
-- Test the backend with manage_app op call, or curl {BASE}/run/ID/live/api/... (requests without an Origin header need no session). get_app with logs:true shows backend output and errors browsers hit in the pages.
+- Test the backend with manage_app op call, or curl {BASE}/run/ID/live/api/... (requests without an Origin header need no app session; once sign-in is on, send your Authorization header, which the backend never sees). get_app with logs:true shows backend output and errors browsers hit in the pages.
 - manage_app op share makes a public link (op unshare revokes one): following the live version or pinned to one, optionally read-only (its visitors' writes are refused before they reach the backend). {SHARE}
 - Versions keep their files for the latest 20 deploys, plus the live version and versions links pin.
 `

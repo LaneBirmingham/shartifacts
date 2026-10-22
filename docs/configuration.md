@@ -16,12 +16,28 @@ shartifacts checks its settings together before it listens, and it refuses to st
 | `SHARTIFACTS_APP_ORIGIN` | `-app-origin` | | Needs the share origin. A wildcard origin that gives each app's public links a hostname of its own (`https://*.share.example.com`), so app pages keep browser storage and cookies. [More](sharing.md#apps-on-hostnames-of-their-own). |
 | `SHARTIFACTS_AUTH_PROXY` | `-auth-proxy` | `false` | Set this only when the proxy in front of the workspace authenticates every request itself (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests that a proxy forwards from a public address are refused. See [security.md](security.md#behind-a-reverse-proxy). |
 
+## Sign-in
+
+Sign-in is not a flag: it is on once an owner password is set, and the password lives in the data folder (`data/meta/auth.json`), next to what it protects. Set it under **Sign-in** in the workspace, or with the `auth` command on the server, which is also how you recover a lost password. A running server picks changes up within a second. [security.md](security.md#sign-in) explains what it covers.
+
+```sh
+shartifacts auth status                 # on or off, and how many sessions and tokens
+shartifacts auth set-password           # asks twice on a terminal, else reads one line from stdin
+shartifacts auth new-password           # makes one up and prints it once
+shartifacts auth token "Claude Code"    # makes an agent token and prints it once
+shartifacts auth tokens                 # lists tokens; revoke ID revokes one, revoke all every one
+shartifacts auth sign-out               # signs every browser out
+shartifacts auth off                    # removes the password; tokens are kept
+```
+
+A new password signs every browser out but keeps agent tokens, and `set-password` lists the ones left: revoke them too if someone else may have known the old password. With Docker, run them in the container: `docker compose exec shartifacts shartifacts auth set-password`. To pipe a password in, add `-T`: `printf '%s\n' "$PW" | docker compose exec -T shartifacts shartifacts auth set-password`. Outside Docker, `-data DIR` (or `SHARTIFACTS_DATA`) names the data folder; run the command as the user the server runs as (with `sudo`, the file is given the data folder's owner).
+
 ## Data and features
 
 | Variable | Flag | Default | |
 | --- | --- | --- | --- |
 | `SHARTIFACTS_DATA` | `-data` | `./data` (`/data` in the image) | The data folder. [Back it up](install.md#back-up-and-restore). With Compose this is the folder **on the host**, mounted at `/data`. |
-| `ANTHROPIC_API_KEY` | | | Lets artifacts call Claude (`window.claude.complete`, `claude.use("sample")`). Off when empty. Anyone who can reach the workspace can spend the key. |
+| `ANTHROPIC_API_KEY` | | | Lets artifacts call Claude (`window.claude.complete`, `claude.use("sample")`). Off when empty. Anyone who can use the workspace can spend the key. |
 | `SHARTIFACTS_CLAUDE_MODEL` | `-claude-model` | `claude-opus-5-5` | The model behind those calls. |
 | `SHARTIFACTS_CONNECTORS` | `-connectors` | | A JSON file of MCP servers that artifacts may call through `claude.use("mcp")`. See [claude-compatibility.md](claude-compatibility.md#connectors). |
 | `SHARTIFACTS_NO_CHUNK_UPLOAD` | `-no-chunk-upload` | `false` | Hides the base64 upload tools from agents, which saves their context when every agent can run `curl`. |

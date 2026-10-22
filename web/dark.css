@@ -29,8 +29,10 @@
 :root[data-theme="dark"] button.primary:disabled {
   color: var(--muted);
 }
-/* The quiet circular switch between the two, in each page's bar. */
-button.theme-toggle {
+/* The quiet circular switch between the two, in each page's bar, and other icon buttons
+   there (signin.js's lock). */
+button.theme-toggle,
+button.icon-button {
   flex: none;
   width: 32px;
   height: 32px;

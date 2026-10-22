@@ -71,11 +71,13 @@ type appCtx struct {
 
 func (c appCtx) deployment() store.Deployment { return c.app.Deployments[c.version-1] }
 
-// session is what a page's token vouches for.
+// session is what a page's token vouches for. Bind ties it to the sign-in it was served
+// under (boundTo), so signing out, a new password or revoking a token ends it too.
 type session struct {
 	App     string `json:"a"`
 	Label   string `json:"l"`
 	Viewer  string `json:"v,omitempty"`
+	Bind    string `json:"b,omitempty"`
 	Expires int64  `json:"e"`
 }
 
@@ -252,25 +254,28 @@ func (s *Server) serveAppAPI(w http.ResponseWriter, r *http.Request, c appCtx, p
 		return
 	}
 	viewer := s.viewerID(r)
-	if crossOrigin {
-		// Only the app's own sandboxed page ("null") may call cross-origin, and on the
-		// workspace host only with the session token served in that page.
-		if origin != "null" {
-			writeJSON(w, 403, map[string]string{"error": "cross-origin request denied"})
+	// Only the app's own sandboxed page ("null") may call cross-origin, and on the workspace
+	// host only with the session token served in that page. With sign-in on, so must any
+	// request that is not signed in.
+	if crossOrigin && origin != "null" {
+		writeJSON(w, 403, map[string]string{"error": "cross-origin request denied"})
+		return
+	}
+	if !c.public && (crossOrigin || !s.signedIn(r)) {
+		token := r.Header.Get(SessionHeader)
+		if token == "" {
+			token = r.URL.Query().Get(sessionParam)
+		}
+		ses, ok := s.verifySession(token)
+		if !ok || ses.App != c.app.ID || ses.Label != c.label || !s.stillBound(ses.Bind) {
+			if crossOrigin {
+				writeJSON(w, 403, map[string]string{"error": "missing or expired app session: reload the page"})
+			} else {
+				writeJSON(w, 401, map[string]string{"error": "sign in first", "code": "unauthenticated"})
+			}
 			return
 		}
-		if !c.public {
-			token := r.Header.Get(SessionHeader)
-			if token == "" {
-				token = r.URL.Query().Get(sessionParam)
-			}
-			ses, ok := s.verifySession(token)
-			if !ok || ses.App != c.app.ID || ses.Label != c.label {
-				writeJSON(w, 403, map[string]string{"error": "missing or expired app session: reload the page"})
-				return
-			}
-			viewer = ses.Viewer
-		}
+		viewer = ses.Viewer
 	}
 	upgrade := r.Header.Get("Upgrade") != ""
 	if c.public {
@@ -303,6 +308,11 @@ func (s *Server) serveAppAPI(w http.ResponseWriter, r *http.Request, c appCtx, p
 		if strings.HasPrefix(strings.ToLower(name), "x-shartifacts-") || strings.HasPrefix(strings.ToLower(name), "x-forwarded-") {
 			out.Header.Del(name)
 		}
+	}
+	// An agent's workspace token is for shartifacts, not the app: a backend that saw it could
+	// use the whole workspace. An app's own Authorization header passes.
+	if workspaceToken(out.Header) {
+		out.Header.Del("Authorization")
 	}
 	// The proxy drops every header Connection names, which would let a client delete the
 	// trusted headers set below. Keep only what an upgrade needs.
@@ -482,9 +492,11 @@ func (s *Server) writeAppPage(w http.ResponseWriter, r *http.Request, c appCtx, 
 	if person, ok := s.Store.Person(viewer); ok && viewer != "" {
 		cfg["user"] = map[string]string{"id": person.ID, "name": person.Name}
 	}
+	// With sign-in on, a page loaded without it (by its own opaque-origin frame, or by
+	// someone who only knows the app's id) gets no session, so its backend refuses it.
 	session := ""
-	if !c.public {
-		session = s.signSession(sessionClaims(c, viewer))
+	if !c.public && s.signedIn(r) {
+		session = s.signSession(sessionClaims(c, viewer, s.boundTo(r)))
 	}
 	cfgJSON, _ := json.Marshal(cfg)
 	sessJSON, _ := json.Marshal(session)
@@ -519,8 +531,8 @@ func (s *Server) writeAppPage(w http.ResponseWriter, r *http.Request, c appCtx, 
 	fmt.Fprint(w, text)
 }
 
-func sessionClaims(c appCtx, viewer string) session {
-	return session{App: c.app.ID, Label: c.label, Viewer: viewer, Expires: time.Now().Add(sessionTTL).Unix()}
+func sessionClaims(c appCtx, viewer, bind string) session {
+	return session{App: c.app.ID, Label: c.label, Viewer: viewer, Bind: bind, Expires: time.Now().Add(sessionTTL).Unix()}
 }
 
 // appRuntime runs first in every app page. It exposes window.shartifacts (the app, version,

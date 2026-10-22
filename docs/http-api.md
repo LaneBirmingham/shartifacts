@@ -2,6 +2,8 @@
 
 The UI and MCP share the same store. JSON requests must use `Content-Type: application/json`.
 
+With [sign-in](security.md#sign-in) on, every request below needs a token, `-H "Authorization: Bearer shx_…"`, or a browser's session cookie; without one the API answers `401` with `{"code":"unauthenticated"}`. Share links, app pages and `/healthz` stay open.
+
 ```sh
 curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts \
   -d '{"title":"Hello","kind":"html","content":"<h1>Hello, local network.</h1>"}'
@@ -33,6 +35,11 @@ curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
 | `POST /api/artifacts/{id}/errors` | `{version, message}` | Record a runtime error seen in a saved version |
 | `POST /api/complete` | `{prompt}` or `{messages}` | `window.claude.complete`; `503` unless `ANTHROPIC_API_KEY` is set |
 | `POST /api/media?name=FILE` | raw bytes | Upload media or a data file, keeping its name |
+| `POST /api/media/{grant}?name=FILE` | raw bytes | The same, with the signed upload URL that MCP hands an agent's shell when sign-in is on (valid for an hour, and only while the token or session it was made for exists) |
+| `GET /api/auth` | | `{enabled, signed_in, via}`: whether sign-in is on, and whether this request is signed in by `session` or `token`. Open to all |
+| `POST /api/auth/login`, `POST /api/auth/logout` | `{password}`; `{everywhere}` | Sign a browser in (sets the session cookie; `403` `wrong_password`, `429` `rate_limited` with `Retry-After` after 10 tries in 15 minutes, `503` `busy` while too many checks run) or out (`everywhere` ends every session) |
+| `PUT /api/auth/password`, `DELETE /api/auth/password` | `{current, password, revoke_tokens}`; `{current}` | Set or change the owner password, or turn sign-in off. The first password needs no `current`, and gets `409` if one was set meanwhile. `revoke_tokens` also revokes every agent token |
+| `GET/POST /api/auth/tokens`, `DELETE /api/auth/tokens/{id}` | `{name}` | List, make (returns `token`, once) or revoke agent tokens |
 | `GET/POST /api/people` | `{name}` | People; requests act as the one named in `X-Shartifacts-Viewer` |
 | `POST /api/artifacts/{id}/db` | `{op, path, data, query, holder, ttlMs}` | `db` operations (`get`, `query`, `set`, `update`, `delete`, `acquire`) |
 | `GET /api/artifacts/{id}/live?peer=&viewer=` | | Server-sent events: data, version, comment and room events |
@@ -54,4 +61,4 @@ curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
 | `GET /api/apps/guide` | | The build contract as text |
 | `/run/{id}/{live or n}/…`, `/p/{token}/…` | | An app version's pages, and its backend under `api/` |
 
-`POST` and `PUT /api/artifacts` accept `files` (`{"path": "content"}`, with `null` removing a file on update) and edits with `file`. `GET /preview/{id}?version=N` renders a saved version in a sandbox; a version with files redirects to `/preview/{id}/{N}/`, which serves the page with its files beneath it. `GET /view/{id}` is the full-page view. `GET /healthz` is a process health check. Browser live previews use `POST /api/previews` with `title`, `kind`, `content` and optional `files`, returning a one-use `url` that expires after two minutes (with files, a directory URL readable until it expires). Preview drafts are ephemeral and do not enter artifact history.
+`POST` and `PUT /api/artifacts` accept `files` (`{"path": "content"}`, with `null` removing a file on update) and edits with `file`. `GET /preview/{id}?version=N` renders a saved version in a sandbox; a version with files redirects to `/preview/{id}/{N}/`, which serves the page with its files beneath it. `GET /view/{id}` is the full-page view. `GET /healthz` is a process health check. With sign-in on, the password and token endpoints need a signed-in browser: a token is refused with `403`, so a leaked token cannot make more or lock you out. `GET /login` is the login page. Browser live previews use `POST /api/previews` with `title`, `kind`, `content` and optional `files`, returning a one-use `url` that expires after two minutes (with files, a directory URL readable until it expires). Preview drafts are ephemeral and do not enter artifact history.

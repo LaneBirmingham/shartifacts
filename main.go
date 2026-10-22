@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LaneBirmingham/shartifacts/internal/auth"
 	"github.com/LaneBirmingham/shartifacts/internal/config"
 	"github.com/LaneBirmingham/shartifacts/internal/runner"
 	"github.com/LaneBirmingham/shartifacts/internal/sandbox"
@@ -31,6 +32,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == sandbox.OKArg {
 		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "auth" {
+		os.Exit(authCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
 	}
 	cfg, err := config.Parse(os.Args[1:], os.Getenv, os.Stderr)
 	if errors.Is(err, flag.ErrHelp) {
@@ -51,9 +55,18 @@ func main() {
 		log.Fatal(e)
 	}
 	web, _ := fs.Sub(assets, "web")
-	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, AuthProxy: cfg.AuthProxy}
+	signIn, e := auth.Open(cfg.Data)
+	if e != nil {
+		log.Fatal(e)
+	}
+	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, AuthProxy: cfg.AuthProxy, Auth: signIn}
 	for _, line := range cfg.Summary() {
 		log.Print(line)
+	}
+	if signIn.Enabled() {
+		log.Print("sign-in: on; browsers sign in with the owner password, agents send a token")
+	} else {
+		log.Print("sign-in: off; anyone who can reach the workspace can use it. Set a password under Sign-in in the workspace, or with: shartifacts auth set-password")
 	}
 	if cfg.Connectors != "" {
 		if app.Connectors, e = server.LoadConnectors(cfg.Connectors); e != nil {

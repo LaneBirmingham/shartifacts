@@ -784,7 +784,7 @@ try {
   ).toBeVisible();
   await page.locator("#toggle-library").click();
   await page.getByRole("button", { name: "⌁ Connect an agent" }).click();
-  await expect(page.locator("#connect-dialog input")).toHaveValue(base + "/mcp");
+  await expect(page.locator("#connect-dialog input[readonly]")).toHaveValue(base + "/mcp");
   await expect(page.locator("#connect-dialog")).toContainText(`claude mcp add --transport http --scope user shartifacts ${base}/mcp`);
   await page.locator("#connect-dialog [data-close]").click();
   await expect(page.locator("#connect-dialog")).not.toBeVisible();
@@ -1035,10 +1035,68 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect
     .poll(() => frame.locator("#movie").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
+  // Sign-in: set a password in the workspace, connect an agent with a token, sign in from
+  // another browser, revoke the token and sign out.
+  await page.goto(base + "/artifacts");
+  await page.getByRole("button", { name: "⚿ Set a password" }).click();
+  await page.locator("#signin-dialog input[name=password]").fill("correct horse");
+  await page.locator("#signin-dialog input[name=again]").fill("correct horse");
+  await page.getByRole("button", { name: "Turn on sign-in" }).click();
+  await expect(page.locator("#signin-title")).toHaveText("Sign-in is on.");
+  await page.locator("#signin-dialog [data-close]").click();
+  await expect(page.getByRole("button", { name: "⚿ Sign-in & tokens" })).toBeVisible();
+  assert.equal((await fetch(base + "/api/artifacts")).status, 401, "the API without sign-in");
+  // This browser stays signed in, and previews still load their media, which they request
+  // cross-site without the cookie.
+  await page.goto(base + "/a/" + mediaArtifact.id);
+  await expect
+    .poll(() => frame.locator("#movie").evaluate((v) => v.readyState))
+    .toBeGreaterThanOrEqual(2);
+  // Connect an agent makes a token and puts it in the commands.
+  await page.getByRole("button", { name: "⌁ Connect an agent" }).click();
+  await page.locator("#connect-dialog").getByRole("button", { name: "Make a token" }).click();
+  await expect(page.locator("#connect-dialog pre").first()).toContainText("--header \"Authorization: Bearer shx_");
+  const token = (await page.locator("#connect-dialog pre").first().textContent()).match(/Bearer (shx_[\w-]+)/)[1];
+  await page.locator("#connect-dialog [data-close]").click();
+  const agent = new Client({ name: "token-test", version: "1" });
+  await agent.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp"), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  assert.ok((await agent.callTool({ name: "list_artifacts", arguments: {} })).structuredContent.artifacts.length > 0);
+  // The agent's shell uploads with the URL list_media hands it, without the token.
+  const uploadURL = (await agent.callTool({ name: "list_media", arguments: {} })).structuredContent.upload_url;
+  assert.match(uploadURL, /\/api\/media\/[^/]+$/);
+  assert.equal((await fetch(uploadURL + "?name=hello.txt", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "hello" })).status, 201);
+  // Another browser must sign in, and then lands where it was going.
+  const other = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  other.on("pageerror", (e) => errors.push(e.message));
+  await other.goto(base + "/a/" + mediaArtifact.id);
+  await expect(other).toHaveURL(/\/login\?next=/);
+  await other.locator("#password").fill("wrong horse");
+  await other.locator("#password").press("Enter");
+  await expect(other.locator("#login-error")).toHaveText("That isn't the password.");
+  await other.screenshot({ path: "test-results/login-mobile.png" });
+  await other.locator("#password").fill("correct horse");
+  await other.locator("#password").press("Enter");
+  await expect(other).toHaveURL(base + "/a/" + mediaArtifact.id);
+  await expect(other.frameLocator("#preview").locator("#movie")).toBeAttached();
+  await other.close();
+  // Revoking the token refuses the agent from its next request.
+  await page.goto(base + "/");
+  await page.locator("[data-signin]").click();
+  const listed = page.locator("#signin-dialog .token-list li", { hasText: "Claude Code" });
+  await expect(listed).toContainText("last used");
+  await page.screenshot({ path: "test-results/signin.png" });
+  page.once("dialog", (d) => d.accept());
+  await listed.getByRole("button", { name: "Revoke" }).click();
+  await expect(listed).toHaveCount(0);
+  await assert.rejects(agent.callTool({ name: "list_artifacts", arguments: {} }));
+  await agent.close().catch(() => {});
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  assert.equal((await fetch(base + "/api/artifacts")).status, 401);
   // The "Broken" artifact errors on purpose, including in its home-page thumbnail.
   assert.deepEqual(errors.filter((e) => !e.includes("missingFunction")), [], "browser runtime errors");
   console.log(
-    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, and restart persistence.",
+    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
   );
 } catch (e) {
   if (page) {

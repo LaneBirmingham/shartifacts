@@ -92,18 +92,23 @@ func rawJSON(v map[string]any) json.RawMessage {
 	return b
 }
 
-func (s *Server) mcpServer(baseURL string) *mcp.Server {
+func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
 	claudeNote := ""
 	if s.Claude != nil {
 		claudeNote = "\nArtifacts can call Claude with await window.claude.complete(prompt) (or an array of {role, content} messages); it resolves to the reply text.\n"
 	}
 	links := s.linkBase(baseURL)
 	info := uploadInfo{
-		BaseURL: baseURL, UploadURL: baseURL + "/api/media", Method: "POST",
+		BaseURL: baseURL, UploadURL: baseURL + uploadPath, Method: "POST",
 		ContentType:  "The file's MIME type, e.g. video/mp4",
 		MaxFileBytes: store.MaxMedia,
-		CurlExample:  "curl --fail-with-body --silent --show-error -H 'Content-Type: video/mp4' --data-binary '@./clip.mp4' --url '" + strings.ReplaceAll(baseURL+"/api/media", "'", "'\"'\"'") + "'",
+		CurlExample:  "curl --fail-with-body --silent --show-error -H 'Content-Type: video/mp4' --data-binary '@./clip.mp4' --url '" + strings.ReplaceAll(baseURL+uploadPath, "'", "'\"'\"'") + "'",
 		Instructions: "Run curl in the agent's shell with the local file and its MIME type; send raw bytes, not JSON or multipart. Embed the returned url literally. Same host/port as this MCP request; the shell must reach it. Never transcribe base64.",
+	}
+	uploadNote := ""
+	if uploadPath != "/api/media" {
+		// With sign-in on, the shell has no token: the URL carries an hour's grant instead.
+		uploadNote = "\nThe upload URL works for an hour without a token; list_media returns a fresh one."
 	}
 	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data. Delete only when asked, with delete_artifact's confirmation.
 
@@ -114,7 +119,7 @@ Apps are full-stack micro frontends shown as tabs on the home page: a React/Type
 Before updating, get_artifact for the latest base_version. For small changes send edits (old_str/new_str copied exactly from the latest source) instead of resending content. Give people links on ` + links + `, e.g. ` + links + `/a/{id}, even if you connected through another address; the upload URL below is for your shell, not for people.
 
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
-` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample})
+` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote})
 	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List artifacts (id, title, kind, version, description, icon, tags, pinned, open_comments)."}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
 		return nil, map[string]any{"artifacts": s.Store.List()}, nil
 	})

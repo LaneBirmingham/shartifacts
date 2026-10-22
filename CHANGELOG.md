@@ -8,10 +8,12 @@ Getting ready for a public release: simpler setup, clear modes, and a harder edg
 
 - **Rename `SHARTIFACTS_HOSTS` to `SHARTIFACTS_ALLOWED_HOSTS`** in `.env`. Otherwise the hostnames it listed stop being accepted. You can drop the `SHARTIFACTS_PUBLIC_ORIGIN` hostname from the list, because it is now allowed automatically.
 - **Public sharing**: point your edge proxy at the new public listener, **port 8081**, instead of 8080. Port 8080 still answers share hostnames for now, but 8081 cannot serve the workspace whatever the proxy sends. In Compose, 8081 is published on `127.0.0.1` (set `SHARTIFACTS_SHARE_BIND` for a proxy on another machine).
+- **Sign-in** is new and off until you set a password, so nothing changes on upgrade. Once you set one, agents you connected before need a token.
 - If you wrote a default port into an origin (`https://share.example.com:443`), it is now dropped, so it matches what browsers send.
 
 ### Added
 
+- **Optional sign-in** ([docs/security.md](docs/security.md#sign-in)): set an owner password under **Sign-in** in the workspace, or with `shartifacts auth set-password`, and browsers sign in once (30-day sessions) while agents send a revocable token per agent (`Authorization: Bearer shx_…`). **Connect an agent** makes a token and fills it into the commands. Share links and app links stay public. `shartifacts auth` also makes and revokes tokens and resets a lost password from the server's shell. Passwords are stored as PBKDF2 hashes and tokens as digests; failed logins are throttled; app sessions and upload URLs end with the sign-in they were made for; tokens never reach app backends.
 - **Modes** ([docs/modes.md](docs/modes.md)): private, public sharing with the bundled Caddy, and public sharing through Cloudflare Tunnel or your own proxy. The mode is logged at startup and reported by `/api/config`.
 - **Agent-driven setup**: [skills/shartifacts-setup](skills/shartifacts-setup/SKILL.md), and a README that starts with a prompt to give your agent.
 - **Every flag is also a `SHARTIFACTS_*` environment variable.** Compose passes settings as variables, and the image no longer needs command-line arguments.
@@ -27,7 +29,7 @@ Getting ready for a public release: simpler setup, clear modes, and a harder edg
 - **Workspace requests that a proxy forwards from a public address are refused**, judged by `X-Forwarded-For`, `Forwarded`, `CF-Connecting-IP` and similar headers. This stops a proxy that is exposed by mistake from serving the workspace to the internet. `SHARTIFACTS_AUTH_PROXY=true` opts out, for a proxy that authenticates people itself.
 - Read-only app links refuse WebSocket upgrades and bare `OPTIONS` requests. Revoking a link, or deleting its app, now also ends its open WebSockets and event streams within seconds. Revoked artifact links stop their live updates too.
 - A client can no longer remove the `X-Shartifacts-*` headers that backends trust by naming them in `Connection`. Backends now receive `X-Forwarded-Host` and `X-Forwarded-Proto`, as documented.
-- Encoded dot segments (`%2e%2e`) in app paths are refused, rather than reaching backends as `..`.
+- Encoded dot segments (`%2e%2e`) are refused in every path, not only app paths, rather than reaching backends or file lookups as `..`. The workspace's pages are served only by their routes (`/hub.html` is a 404), so they always carry the CSP that stops other sites from framing them.
 - A share link's data calls look up the token before reading the body, and read 64 KiB at most.
 - A Go backend in a custom directory (`"backend": {"go": "./backend"}`) is no longer served as static files.
 - React builds are cached, so reloading a shared page does not rebuild it every time.

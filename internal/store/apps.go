@@ -900,6 +900,9 @@ func treeSize(root string) (files int, total int64, err error) {
 // AppsDir is the directory holding every app; a runner sidecar mounts it.
 func (s *Store) AppsDir() string { return s.appsDir() }
 
+// Dir is the data directory.
+func (s *Store) Dir() string { return s.dir }
+
 // Secret returns a random 32-byte key kept in meta/{name}.key, creating it on first use.
 func (s *Store) Secret(name string) ([]byte, error) {
 	path := filepath.Join(s.dir, "meta", name+".key")

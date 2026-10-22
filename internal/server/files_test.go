@@ -50,8 +50,8 @@ func TestMultiFileArtifacts(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	for _, path := range []string{"/preview/" + a.ID + "/1/missing.css", "/preview/" + a.ID + "/2/", "/preview/" + a.ID + "/1/../x"} {
-		// The mux cleans "../" with a redirect, so a path can never leave the directory.
-		if w = sandboxed(path); w.Code != 404 && w.Code != 307 {
+		// guard refuses "../", so a path can never leave the directory.
+		if w = sandboxed(path); w.Code != 404 && w.Code != 400 {
 			t.Fatalf("%s: %d", path, w.Code)
 		}
 	}
