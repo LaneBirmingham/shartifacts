@@ -302,7 +302,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Note         string             `json:"note,omitempty"`
 		BaseVersion  int                `json:"base_version,omitempty" jsonschema:"Latest version from get_artifact; needed for every change but archived"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Omit a field to keep it. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
 		// Archiving is not a revision: alone, it neither needs nor checks base_version.
 		revising := in.Title != "" || in.Kind != "" || in.Content != nil || in.Edits != nil || in.Files != nil || in.Description != nil ||
 			in.Icon != nil || in.Tags != nil || in.Capabilities != nil || in.Note != ""
