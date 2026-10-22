@@ -126,7 +126,7 @@ Before updating, get_artifact for the latest base_version. For small changes sen
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
 ` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote})
 	type ListInput struct {
-		Limit    int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
+		Limit    int    `json:"limit,omitempty"`
 		Cursor   string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
 		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive; include: both"`
 	}
@@ -152,7 +152,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	type SearchInput struct {
 		Query    string `json:"query" jsonschema:"Words to find in titles, tags, descriptions, rendered text, notes and comments (typos and word forms are fine), with optional filters: \"exact phrase\", -exclude, kind:react, tag:finance or #finance, is:pinned, is:archived, has:comments|open|files|video|audio|image|chart|diagram|table|form|3d|math|data, updated:today|week|month|year|30d|2026-03, created:…, before:/after: dates (before:90d is untouched for 90 days)"`
 		Sort     string `json:"sort,omitempty" jsonschema:"relevance (default with words), updated, oldest (least recently updated first, for tidying up), created or title"`
-		Limit    int    `json:"limit,omitempty" jsonschema:"At most this many results (default 10, max 50)"`
+		Limit    int    `json:"limit,omitempty"`
 		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive (as is:archived); include: both"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "search_artifacts", Description: "Find artifacts by what they contain or are about, ranked, with a matching excerpt for each and a corrected query when words were misspelt. Use it before list_artifacts when looking for something specific."}, func(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, any, error) {
@@ -199,9 +199,9 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		return nil, body, nil
 	})
 	type GetInput struct {
-		ID      string `json:"id" jsonschema:"Artifact ID"`
+		ID      string `json:"id"`
 		Version int    `json:"version,omitempty" jsonschema:"One revision instead of the latest"`
-		History bool   `json:"history,omitempty" jsonschema:"Return every revision, not just the latest"`
+		History bool   `json:"history,omitempty"`
 	}
 	// saved acknowledges a write without echoing source the caller just sent.
 	saved := func(a store.Artifact) map[string]any {
@@ -242,12 +242,12 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		Title       string   `json:"title"`
 		Kind        string   `json:"kind"`
 		Content     string   `json:"content"`
-		Description string   `json:"description,omitempty" jsonschema:"One sentence for the library card"`
+		Description string   `json:"description,omitempty"`
 		Icon        string   `json:"icon,omitempty" jsonschema:"One short generic word for its icon (chart, calendar, recipe, code, map, game, list, money, timer, music, photo, book) or an emoji"`
-		Tags        []string `json:"tags,omitempty" jsonschema:"A few short lowercase labels people would search or group it by (finance, recipes, work)"`
+		Tags        []string `json:"tags,omitempty"`
 		// Capabilities are declared as on Claude's Artifact tool; db.rules take effect.
 		Capabilities map[string]any    `json:"capabilities,omitempty" jsonschema:"Optional, as Claude's: {db: {rules: [{path, read, write}]}} sets who reads and writes which documents"`
-		Files        map[string]string `json:"files,omitempty" jsonschema:"Optional supporting text files by relative path (style.css, components/Chart.tsx, data.json, about.html); the source references them relatively"`
+		Files        map[string]string `json:"files,omitempty"`
 		Note         string            `json:"note,omitempty"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "create_artifact", Description: "Create an artifact (title, kind, content, optional description, tags, files and note). Returns id, version, title, kind, and warnings for problems the preview will hit."}, func(ctx context.Context, req *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, any, error) {
@@ -262,18 +262,18 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		return nil, saved(a), nil
 	})
 	type UpdateInput struct {
-		ID           string             `json:"id,omitempty" jsonschema:"Artifact ID"`
+		ID           string             `json:"id,omitempty"`
 		IDs          []string           `json:"ids,omitempty" jsonschema:"Several artifacts (up to 200) to archive or restore together; with ids send only archived"`
 		Archived     *bool              `json:"archived,omitempty" jsonschema:"true moves it to the archive (out of the library, list_artifacts and search_artifacts; reversible, keeps everything), false restores it; alone it adds no revision and needs no base_version"`
-		Title        string             `json:"title,omitempty" jsonschema:"Omit to keep"`
-		Kind         string             `json:"kind,omitempty" jsonschema:"Omit to keep"`
+		Title        string             `json:"title,omitempty"`
+		Kind         string             `json:"kind,omitempty"`
 		Content      *string            `json:"content,omitempty" jsonschema:"Full new source; omit to keep or when sending edits"`
 		Edits        []store.Edit       `json:"edits,omitempty" jsonschema:"old_str/new_str pairs against the latest source; each old_str copied exactly and occurring once; applied in order, all or none"`
 		Files        map[string]*string `json:"files,omitempty" jsonschema:"Supporting files to add or replace by path; null removes one; files not named are kept"`
-		Description  *string            `json:"description,omitempty" jsonschema:"Omit to keep"`
-		Icon         *string            `json:"icon,omitempty" jsonschema:"Omit to keep"`
-		Tags         *[]string          `json:"tags,omitempty" jsonschema:"Replaces the tags; omit to keep"`
-		Capabilities map[string]any     `json:"capabilities,omitempty" jsonschema:"Replaces the declared capabilities; omit to keep"`
+		Description  *string            `json:"description,omitempty"`
+		Icon         *string            `json:"icon,omitempty"`
+		Tags         *[]string          `json:"tags,omitempty"`
+		Capabilities map[string]any     `json:"capabilities,omitempty"`
 		Note         string             `json:"note,omitempty"`
 		BaseVersion  int                `json:"base_version,omitempty" jsonschema:"Latest version from get_artifact; needed for every change but archived"`
 	}
@@ -325,7 +325,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		return nil, saved(a), nil
 	})
 	type StorageInput struct {
-		ID string `json:"id" jsonschema:"Artifact ID"`
+		ID string `json:"id"`
 		storageOp
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "artifact_storage", Description: "Read or write the data an artifact keeps with window.storage (op get|set|delete|list; shared for the shared scope)."}, func(ctx context.Context, req *mcp.CallToolRequest, in StorageInput) (*mcp.CallToolResult, any, error) {
@@ -339,9 +339,9 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	s.addAgentTools(m)
 	s.addAppTools(m, baseURL, links)
 	type ListMediaInput struct {
-		Name   string `json:"name,omitempty" jsonschema:"Only files whose name contains this, in any case"`
+		Name   string `json:"name,omitempty"`
 		Type   string `json:"type,omitempty" jsonschema:"Only this MIME type or family, e.g. video or image/png"`
-		Limit  int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
+		Limit  int    `json:"limit,omitempty"`
 		Cursor string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "list_media", Description: "List uploaded media, newest first, 50 at a time (url, MIME type, size, name; URLs are reusable), filtered by name or type; total counts the matches and next_cursor fetches the next page. Also returns the upload URL and a ready-to-run curl command for local files."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListMediaInput) (*mcp.CallToolResult, any, error) {
@@ -369,7 +369,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	})
 	if !s.NoChunkUpload {
 		type BeginMediaInput struct {
-			MIMEType string `json:"mime_type" jsonschema:"File MIME type, e.g. video/mp4"`
+			MIMEType string `json:"mime_type"`
 		}
 		mcp.AddTool(m, &mcp.Tool{Name: "begin_media_upload", Description: "Begin a chunked base64 upload (programmatic clients only; shells use list_media). Upload URL: " + info.UploadURL}, func(ctx context.Context, req *mcp.CallToolRequest, in BeginMediaInput) (*mcp.CallToolResult, any, error) {
 			u, e := s.Store.BeginMediaUpload(in.MIMEType)
@@ -383,7 +383,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 			UploadID string `json:"upload_id"`
 			Offset   int64  `json:"offset" jsonschema:"Byte offset from the previous call; starts at 0"`
 			Data     string `json:"data_base64" jsonschema:"Base64 of <=1048576 bytes"`
-			Final    bool   `json:"final" jsonschema:"True on the last chunk"`
+			Final    bool   `json:"final"`
 		}
 		mcp.AddTool(m, &mcp.Tool{Name: "upload_media_chunk", Description: "Append a chunk at the returned offset. final:true commits and returns {id,url,mime_type,size}; otherwise the next offset."}, func(ctx context.Context, req *mcp.CallToolRequest, in ChunkInput) (*mcp.CallToolResult, any, error) {
 			if len(in.Data) > base64.StdEncoding.EncodedLen(store.MediaChunkSize) {

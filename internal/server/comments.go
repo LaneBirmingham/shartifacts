@@ -63,9 +63,9 @@ func threads(list []store.Comment, all bool) []thread {
 
 func (s *Server) addCommentTool(m *mcp.Server) {
 	type CommentsInput struct {
-		ID        string `json:"id" jsonschema:"Artifact ID"`
+		ID        string `json:"id"`
 		Op        string `json:"op" jsonschema:"list (open threads), add, resolve or reopen"`
-		Body      string `json:"body,omitempty" jsonschema:"Comment text for add"`
+		Body      string `json:"body,omitempty"`
 		Parent    string `json:"parent,omitempty" jsonschema:"Thread ID to reply to with add"`
 		CommentID string `json:"comment_id,omitempty" jsonschema:"Thread ID for resolve or reopen"`
 		All       bool   `json:"all,omitempty" jsonschema:"list resolved threads too"`
