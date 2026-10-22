@@ -77,6 +77,10 @@ Rules
 
 Explicit user instructions take priority. Preserve existing designs when editing. Source is never styled automatically.`
 
+// guideURI names the resource holding the full guide that the initialize instructions
+// summarise. It is a resource rather than a tool so the tool list stays as short as it is.
+const guideURI = "shartifacts://guide"
+
 type uploadInfo struct {
 	BaseURL      string `json:"base_url"`
 	UploadURL    string `json:"upload_url"`
@@ -113,7 +117,12 @@ func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
 		// With sign-in on, the shell has no token: the URL carries an hour's grant instead.
 		uploadNote = "\nThe upload URL works for an hour without a token; list_media returns a fresh one."
 	}
-	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
+	// The upload lines differ per connection and per deployment, so both the summary and
+	// the guide carry them as they are.
+	uploadLines := "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote
+	// The guide is everything an agent may need, and it costs context only when an agent
+	// reads it; the instructions every connection receives are the summary below.
+	guide := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
 
 The library grows with every artifact, so agents keep it tidy. update_artifact with archived:true moves artifacts (ids for many at once) out of the library into the archive, reversibly: they keep their versions, data, comments and links, and archived:false restores them. list_artifacts and search_artifacts leave the archive out unless archived is include or only. When the person asks you to tidy up, archive what is stale, superseded or a throwaway test (search_artifacts sort:oldest or before:90d finds the stale), and say what you archived. delete_artifact with ids permanently deletes archived artifacts, to empty the archive when the person wants that. An artifact still in the library is deleted only when the person asks, with delete_artifact's confirmation.
 
@@ -124,7 +133,23 @@ Apps are full-stack micro frontends shown as tabs on the home page: a React/Type
 Before updating, get_artifact for the latest base_version. For small changes send edits (old_str/new_str copied exactly from the latest source) instead of resending content. Give people links on ` + links + `, e.g. ` + links + `/a/{id}, even if you connected through another address; the upload URL below is for your shell, not for people.
 
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
-` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote})
+` + claudeNote + uploadLines
+	// The summary is what an agent must know before its first call: what it can make, how
+	// not to lose an edit, what previews refuse, whose design to use, how to tidy up and
+	// where uploads go. Everything else is one resources/read away.
+	summary := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides, svg, mermaid, code.
+Before updating, get_artifact for the latest base_version.
+Previews are sandboxed: no network, iframes, external URLs (bundled libraries aside) or localStorage; use window.storage.
+New visual artifacts use get_design_system. Explicit user design instructions always override it. Preserve an existing artifact's design when editing.
+Archive with update_artifact archived:true (ids for many); empty the archive with delete_artifact ids.
+Upload files with the curl command from list_media. Do not manually transcribe base64.
+Give people links on ` + links + `, e.g. ` + links + `/a/{id}; the upload URL is for your shell.
+Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps).
+` + uploadLines
+	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: summary})
+	m.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: guideURI, MIMEType: "text/plain", Text: guide}}}, nil
+	})
 	type ListInput struct {
 		Limit    int    `json:"limit,omitempty"`
 		Cursor   string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`

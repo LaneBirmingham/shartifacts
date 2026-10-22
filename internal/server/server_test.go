@@ -215,9 +215,17 @@ func TestMCPInitializeAndTools(t *testing.T) {
 		t.Fatal(out)
 	}
 	instructions := out["result"].(map[string]any)["instructions"].(string)
-	for _, part := range []string{"begin_media_upload", "upload_media_chunk", "256 MiB", "<video", "/api/media", "base_version"} {
+	for _, part := range []string{"/api/media", "base_version", guideURI} {
 		if !strings.Contains(instructions, part) {
-			t.Fatalf("agent guidance missing %s", part)
+			t.Fatalf("agent instructions missing %s", part)
+		}
+	}
+	// The detail of uploading lives in the guide resource the instructions point at.
+	out = call(`{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"` + guideURI + `"}}`)
+	guide := out["result"].(map[string]any)["contents"].([]any)[0].(map[string]any)["text"].(string)
+	for _, part := range []string{"begin_media_upload", "upload_media_chunk", "256 MiB", "<video", "/api/media", "base_version"} {
+		if !strings.Contains(guide, part) {
+			t.Fatalf("agent guide missing %s", part)
 		}
 	}
 	out = call(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
