@@ -35,11 +35,11 @@ Three reasonable ways to use this repo, in order of how much I'd suggest them:
 
 - **Made for agents.** A built-in MCP server lets Claude Code, Codex, Cursor and other agents create, edit, search and comment on artifacts and deploy apps. Artifacts written for Claude run unchanged: the same React libraries, shadcn/ui, Tailwind, `window.storage` and `claude.use(...)` capabilities.
 - **Apps that run.** Full-stack micro frontends: a React/TypeScript frontend with a Go (or prebuilt Rust) backend and its own data, deployed as versions you can preview and roll back, each open in a tab.
-
-![The apps hub with Pixel Wall, a React and Go app, open in a tab](docs/images/apps.png)
 - **Private by default.** No cloud, no telemetry, no CDNs. It works offline. The workspace answers only your own network and tailnet, and an optional owner password, with a revocable token per agent, keeps out the people and devices on it you don't trust.
 - **Share when you want to.** Give it a hostname of your own and it serves read-only artifact links and public app links there, and nothing else.
 - **One process, one folder.** A single Go binary (or two small containers) keeps everything as plain files in one data folder you back up.
+
+![The apps hub with Pixel Wall, a React and Go app, open in a tab](docs/images/apps.png)
 
 ## Set up with your agent
 
