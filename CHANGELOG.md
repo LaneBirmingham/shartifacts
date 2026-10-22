@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-22
+
+Cheaper context for every connected agent: the same tools, fields and behaviour, at about 4.2k tokens instead of 5.5k.
 
 ### Changed
 
