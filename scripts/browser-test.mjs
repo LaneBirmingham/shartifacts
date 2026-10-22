@@ -182,7 +182,6 @@ try {
   );
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((t) => t.name).sort(), [
-    "archive_artifacts",
     "artifact_comments",
     "artifact_db",
     "artifact_storage",

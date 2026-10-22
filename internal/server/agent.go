@@ -121,22 +121,6 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 		return nil, map[string]any{"results": results}, nil
 	})
 
-	type ArchiveInput struct {
-		IDs     []string `json:"ids" jsonschema:"Artifacts to archive (or restore), up to 200"`
-		Restore bool     `json:"restore,omitempty" jsonschema:"Bring them back from the archive to the library instead"`
-	}
-	mcp.AddTool(m, &mcp.Tool{Name: "archive_artifacts", Description: "Archive artifacts, many at once, to tidy the library: they leave the library, list_artifacts and search_artifacts (unless archived asks for them) but keep their versions, data, comments and share links. Reversible: restore:true brings them back. Returns done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in ArchiveInput) (*mcp.CallToolResult, any, error) {
-		op := "archive"
-		if in.Restore {
-			op = "restore"
-		}
-		out, e := s.bulk(op, in.IDs)
-		if e != nil {
-			return nil, nil, e
-		}
-		return nil, out, nil
-	})
-
 	type DeleteInput struct {
 		ID          string   `json:"id,omitempty" jsonschema:"One artifact"`
 		IDs         []string `json:"ids,omitempty" jsonschema:"Archived artifacts to delete together, up to 200 (emptying the archive); no confirmation"`
@@ -144,7 +128,7 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 		Confirm     string   `json:"confirm,omitempty" jsonschema:"The token the first call returned, after the person confirmed"`
 	}
 	destructive := true
-	mcp.AddTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete artifacts with their versions, data, assets, comments and share links. Archived artifacts are deleted at once: pass ids (or id) to empty the archive, and get done and failed by id; one not archived fails rather than being deleted. An artifact still in the library needs id, base_version and the person's say-so: the first call returns a confirmation token to show them, then call again with confirm.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete artifacts with their versions, data, assets, comments and share links. Archived artifacts are deleted at once: pass ids (or id) to empty the archive, and get done and failed by id; one not archived fails rather than being deleted. An artifact still in the library needs id, base_version and the person's say-so: the first call returns a confirmation token to show them, then call again with confirm. To tidy up reversibly, archive with update_artifact instead.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
 		if in.IDs != nil {
 			if in.ID != "" {
 				return nil, nil, errors.New("send id or ids, not both")
