@@ -33,6 +33,7 @@ services:
       SHARTIFACTS_CONNECTORS: ${SHARTIFACTS_CONNECTORS:-}
       SHARTIFACTS_NO_CHUNK_UPLOAD: ${SHARTIFACTS_NO_CHUNK_UPLOAD:-}
       SHARTIFACTS_CLAUDE_MODEL: ${SHARTIFACTS_CLAUDE_MODEL:-}
+      SHARTIFACTS_APP_KEEP_VERSIONS: ${SHARTIFACTS_APP_KEEP_VERSIONS:-}
       # Empty runs app backends inside this container (prebuilt binaries only).
       SHARTIFACTS_RUNNER_URL: ${SHARTIFACTS_RUNNER_URL-http://runner:8090}
       # Optional: lets artifacts call Claude. Empty keeps shartifacts fully offline.
@@ -70,6 +71,7 @@ services:
     environment:
       SHARTIFACTS_APP_PROCS: ${SHARTIFACTS_APP_PROCS:-}
       SHARTIFACTS_APP_IDLE: ${SHARTIFACTS_APP_IDLE:-}
+      SHARTIFACTS_APP_DATA_QUOTA: ${SHARTIFACTS_APP_DATA_QUOTA:-}
       # Where Go modules come from at build time; "off" builds stdlib/vendored apps only.
       GOPROXY: ${SHARTIFACTS_GOPROXY:-https://proxy.golang.org,direct}
       TZ: ${TZ:-UTC}

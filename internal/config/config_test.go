@@ -19,7 +19,7 @@ func TestDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Listen != ":8080" || c.Data != "./data" || c.AppProcs != 16 || c.AppIdle != 15*time.Minute || c.Mode() != "private" {
+	if c.Listen != ":8080" || c.Data != "./data" || c.AppProcs != 16 || c.AppIdle != 15*time.Minute || c.AppKeepVersions != 20 || c.AppDataQuota != 0 || c.Mode() != "private" {
 		t.Fatalf("%+v", c)
 	}
 	if len(c.AllowedHosts) != 0 || c.ShareOrigin != "" {
@@ -55,6 +55,40 @@ func TestEnvironment(t *testing.T) {
 		t.Fatal(c, err)
 	}
 	if _, err := parse(t, nil, map[string]string{"SHARTIFACTS_APP_PROCS": "many"}); err == nil || !strings.Contains(err.Error(), "SHARTIFACTS_APP_PROCS") {
+		t.Fatal(err)
+	}
+}
+
+func TestAppStorageSettings(t *testing.T) {
+	c, err := parse(t, nil, map[string]string{"SHARTIFACTS_APP_KEEP_VERSIONS": "5", "SHARTIFACTS_APP_DATA_QUOTA": "2GiB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AppKeepVersions != 5 || c.AppDataQuota != 2<<30 {
+		t.Fatalf("%+v", c)
+	}
+	for in, want := range map[string]ByteSize{"0": 0, "1048576": 1 << 20, "500MB": 500e6, "500 mb": 500e6, "1.5G": 3 << 29, "64k": 64 << 10, "2TiB": 2 << 40} {
+		var b ByteSize
+		if err := b.Set(in); err != nil || b != want {
+			t.Errorf("%q: %d, %v; want %d", in, b, err, want)
+		}
+	}
+	for _, in := range []string{"lots", "-1G", "5 parsecs", "1e30"} {
+		var b ByteSize
+		if err := b.Set(in); err == nil {
+			t.Errorf("%q: accepted as %d", in, b)
+		}
+	}
+	if s := ByteSize(2 << 30); s.String() != "2GiB" {
+		t.Error(s.String())
+	}
+	// Keeping no versions would leave nothing to roll back to, and nothing live.
+	for _, keep := range []string{"0", "-3"} {
+		if _, err := parse(t, []string{"-app-keep-versions", keep}, nil); err == nil || !strings.Contains(err.Error(), "app-keep-versions") {
+			t.Fatal(keep, err)
+		}
+	}
+	if _, err := parse(t, nil, map[string]string{"SHARTIFACTS_APP_DATA_QUOTA": "plenty"}); err == nil || !strings.Contains(err.Error(), "SHARTIFACTS_APP_DATA_QUOTA") {
 		t.Fatal(err)
 	}
 }

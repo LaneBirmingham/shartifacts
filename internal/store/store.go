@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -178,10 +179,19 @@ func ValidateFiles(content string, files map[string]string) error {
 }
 
 type Store struct {
+	// KeepVersions is how many of each app's newest ready versions keep their files (0:
+	// DefaultKeepVersions). Set it before serving.
+	KeepVersions int
+
 	mu      sync.Mutex
 	dir     string
 	items   map[string]Artifact
 	uploads map[string]MediaUpload
+	// writing holds a lock per artifact, guarded by mu, that serializes the writes to that
+	// artifact's file. A save encodes and syncs the file holding only it, so a large
+	// artifact's history never holds up every other request behind mu. It is taken before
+	// mu, never while holding it.
+	writing map[string]*sync.Mutex
 	// comments is guarded by mu, like items.
 	comments map[string][]Comment
 	// kvMu guards artifact storage; it may take mu, never the reverse.
@@ -208,7 +218,7 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, items: map[string]Artifact{}}
+	s := &Store{dir: dir, items: map[string]Artifact{}, writing: map[string]*sync.Mutex{}}
 	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil {
 		return nil, err
@@ -392,8 +402,6 @@ func (s *Store) save(id string, in Input) (Artifact, error) {
 			return Artifact{}, err
 		}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var a Artifact
 	if id == "" {
 		b := make([]byte, 12)
@@ -402,8 +410,13 @@ func (s *Store) save(id string, in Input) (Artifact, error) {
 		}
 		a = Artifact{ID: hex.EncodeToString(b), CreatedAt: time.Now().UTC()}
 	} else {
+		// Holding the artifact's write lock, nothing else changes it, so the new revision is
+		// built and written from this copy without holding mu.
+		defer s.lockWrites(id)()
 		var ok bool
+		s.mu.Lock()
 		a, ok = s.items[id]
+		s.mu.Unlock()
 		if !ok {
 			return a, ErrNotFound
 		}
@@ -467,9 +480,10 @@ func (s *Store) save(id string, in Input) (Artifact, error) {
 
 // SetPinned pins or unpins an artifact without adding a revision.
 func (s *Store) SetPinned(id string, pinned bool) (Artifact, error) {
+	defer s.lockWrites(id)()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	a, ok := s.items[id]
+	s.mu.Unlock()
 	if !ok {
 		return Artifact{}, ErrNotFound
 	}
@@ -477,20 +491,52 @@ func (s *Store) SetPinned(id string, pinned bool) (Artifact, error) {
 	return s.write(a)
 }
 
-// write persists a and returns a copy the caller may change. s.mu is held.
+// lockWrites takes the artifact's write lock and returns its unlock. s.mu is not held.
+func (s *Store) lockWrites(id string) func() {
+	s.mu.Lock()
+	l := s.writing[id]
+	if l == nil {
+		l = &sync.Mutex{}
+		s.writing[id] = l
+	}
+	s.mu.Unlock()
+	l.Lock()
+	return l.Unlock
+}
+
+// write persists a, then publishes it, and returns a copy the caller may change. The caller
+// holds the artifact's write lock (or a is new and unseen), and not s.mu: encoding and
+// syncing the file grow with the artifact's history.
 func (s *Store) write(a Artifact) (Artifact, error) {
-	b, err := json.MarshalIndent(a, "", "  ")
+	b, err := encodeArtifact(a)
 	if err != nil {
 		return Artifact{}, err
 	}
 	if err = writeAtomic(s.dir, filepath.Join(s.dir, a.ID+".json"), b); err != nil {
 		return Artifact{}, err
 	}
+	s.mu.Lock()
 	s.items[a.ID] = a
+	s.mu.Unlock()
 	a.Revisions = append([]Revision(nil), a.Revisions...)
 	return a, nil
 }
+
+// encodeArtifact is an artifact file: compact, and with < > & written as they are rather
+// than as \u003c-style escapes, which make an HTML artifact's history a third larger on
+// disk and slower to write. Files written either way read the same.
+func encodeArtifact(a Artifact) ([]byte, error) {
+	var b bytes.Buffer
+	e := json.NewEncoder(&b)
+	e.SetEscapeHTML(false)
+	if err := e.Encode(a); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 func (s *Store) Delete(id string, base int) error {
+	defer s.lockWrites(id)()
 	s.mu.Lock()
 	a, ok := s.items[id]
 	if !ok {
@@ -506,6 +552,8 @@ func (s *Store) Delete(id string, base int) error {
 		return e
 	}
 	delete(s.items, id)
+	// Anyone already waiting on the write lock finds the artifact gone.
+	delete(s.writing, id)
 	delete(s.comments, id)
 	err := os.Remove(s.commentsPath(id))
 	if assetErr := s.dropAssets(id); err == nil || os.IsNotExist(err) {

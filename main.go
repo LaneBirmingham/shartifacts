@@ -54,6 +54,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
+	st.KeepVersions = cfg.AppKeepVersions
 	web, _ := fs.Sub(assets, "web")
 	signIn, e := auth.Open(cfg.Data)
 	if e != nil {
@@ -86,7 +87,7 @@ func main() {
 		}
 		app.Runtime = &runner.Remote{URL: u, Token: token}
 	} else {
-		local = &runner.Local{Dir: st.AppsDir(), GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle}
+		local = &runner.Local{Dir: st.AppsDir(), GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota)}
 		app.Runtime = local
 	}
 	go func() {
@@ -157,7 +158,7 @@ func runRunner(cfg *config.Config) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		log.Fatal(err)
 	}
-	l := &runner.Local{Dir: dir, GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, Remote: true}
+	l := &runner.Local{Dir: dir, GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota), Remote: true}
 	info := l.Info(context.Background())
 	goVersion := info.Go
 	if goVersion == "" {

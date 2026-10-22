@@ -189,7 +189,7 @@ func TestAppLabels(t *testing.T) {
 func TestAppPruning(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	a := newApp(t, s)
-	total := KeepDeployments + 5
+	total := DefaultKeepVersions + 5
 	for v := 1; v <= total; v++ {
 		s.StageDeployment(a.ID, StageInput{BaseVersion: v - 1, Files: map[string][]byte{"index.html": []byte("x")}})
 		ready(t, s, a.ID, v, v == 1) // version 1 stays live
@@ -206,7 +206,7 @@ func TestAppPruning(t *testing.T) {
 	s.StageDeployment(a.ID, StageInput{BaseVersion: total, Files: map[string][]byte{"index.html": []byte("x")}})
 	a = ready(t, s, a.ID, total+1, false)
 	for _, d := range a.Deployments {
-		keep := d.Version == 1 || d.Version == 2 || d.Version > total+1-KeepDeployments
+		keep := d.Version == 1 || d.Version == 2 || d.Version > total+1-DefaultKeepVersions
 		if d.Pruned == keep {
 			t.Fatalf("version %d pruned=%v", d.Version, d.Pruned)
 		}

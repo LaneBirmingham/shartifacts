@@ -69,7 +69,9 @@ func (s *Server) appGuide(ctx context.Context, base string) string {
 		share = "Public links are served at " + s.AppOrigin + "/p/TOKEN/, one hostname per app: * is a generated label unless you give the app one that reads well (deploy_app label when creating, or manage_app op update label), e.g. budget makes " + strings.Replace(s.AppOrigin, "*", "budget", 1) + "/p/TOKEN/. Choose it before sharing: visitors' browser storage and cookies stay with the hostname they used, though its links keep working (they redirect)."
 		storage = "- Browser storage: public links give each app an origin of its own, so localStorage, sessionStorage, IndexedDB and cookies (document.cookie, and the backend's Set-Cookie, kept to that hostname) persist in each visitor's browser as on any site, apart from other apps. Name cookies __Host-... (Secure; Path=/; no Domain) so no other app's page can shadow them. In hub tabs localStorage persists per app in that browser and sessionStorage until the tab closes, with no cookies or IndexedDB; a page opened on its own keeps storage only for the page. Keep state that matters, or that people share, in the backend."
 	}
-	return strings.NewReplacer("{BASE}", base, "{GO}", goLine, "{OS}", info.OS, "{ARCH}", info.Arch, "{RUST}", rustTargetFor(info.OS, info.Arch),
+	keep := s.Store.KeepVersionsOrDefault()
+	retention := fmt.Sprintf("Rollback reaches the newest %d versions that built (get_app's oldest_rollback), plus the live version and versions links pin; older versions lose their files. Deploys share unchanged files with the version before, and a Go backend whose files did not change reuses its build, so versions are cheap.", keep)
+	return strings.NewReplacer("{BASE}", base, "{RETENTION}", retention, "{GO}", goLine, "{OS}", info.OS, "{ARCH}", info.Arch, "{RUST}", rustTargetFor(info.OS, info.Arch),
 		"{WHERE}", where, "{SANDBOX}", info.Sandbox.Detail, "{NETWORK}", network, "{LIBS}", LibraryNames(), "{SHARE}", share, "{STORAGE}", storage).Replace(appGuideText)
 }
 
@@ -121,8 +123,29 @@ DEPLOYING
   (new app: POST {BASE}/api/apps?name=My+App). Add &merge=true to overlay the previous version, &promote=false to stage. Up to 256 MiB and 5000 files.
 - Test the backend with manage_app op call, or curl {BASE}/run/ID/live/api/... (requests without an Origin header need no app session; once sign-in is on, send your Authorization header, which the backend never sees). get_app with logs:true shows backend output and errors browsers hit in the pages.
 - manage_app op share makes a public link (op unshare revokes one): following the live version or pinned to one, optionally read-only (its visitors' writes are refused before they reach the backend). {SHARE}
-- Versions keep their files for the latest 20 deploys, plus the live version and versions links pin.
+- {RETENTION}
 `
+
+// recentVersions trims an app view's deployments, newest first, to the newest n and any
+// older version that is live or a link pins, and counts what it left out. The history grows
+// with every deploy and agents rarely need more than its end.
+func recentVersions(view map[string]any, a store.App, n int) {
+	deps, _ := view["deployments"].([]store.Deployment)
+	pinned := map[int]bool{a.Live: true}
+	for _, sh := range a.Shares {
+		pinned[sh.Version] = true
+	}
+	kept := []store.Deployment{}
+	for i, d := range deps {
+		if i < n || pinned[d.Version] {
+			kept = append(kept, d)
+		}
+	}
+	if omitted := len(deps) - len(kept); omitted > 0 {
+		view["deployments"] = kept
+		view["older_versions_omitted"] = omitted
+	}
+}
 
 // Apps have three tools, grouped by what an agent is doing: get_app reads (the guide, the
 // list, an app, its files and logs), deploy_app ships code (creating the app on its first
@@ -138,8 +161,9 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		List    bool     `json:"list_files,omitempty" jsonschema:"Also list the version's files with sizes"`
 		Logs    bool     `json:"logs,omitempty" jsonschema:"Also return the version's backend output and state, build log and errors browsers reported"`
 		Tail    int      `json:"tail,omitempty" jsonschema:"With logs: most recent lines (default 200)"`
+		All     bool     `json:"all_versions,omitempty" jsonschema:"List every version; by default the newest 10, plus the live one and versions links pin"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: versions (status, notes, errors), live version, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: the newest versions (status, notes, errors), live version, how far back rollback reaches, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
 		if in.ID == "" {
 			if in.Guide {
 				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s.appGuide(ctx, base)}}}, nil, nil
@@ -151,6 +175,9 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 			return nil, nil, err
 		}
 		out := s.appView(a, links, false)
+		if !in.All {
+			recentVersions(out, a, 10)
+		}
 		v := in.Version
 		if v == 0 {
 			v = len(a.Deployments)

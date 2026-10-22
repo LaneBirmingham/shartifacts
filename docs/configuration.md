@@ -49,6 +49,8 @@ A new password signs every browser out but keeps agent tokens, and `set-password
 | `SHARTIFACTS_RUNNER_URL` | `-runner-url` | `http://runner:8090` in Compose | Where app backends are built and run. Empty runs them inside the shartifacts process, which then needs `go` on its `PATH` to build Go backends. |
 | `SHARTIFACTS_APP_PROCS` | `-app-procs` | `16` | The most app backends running at once. The least recently used one stops to make room. |
 | `SHARTIFACTS_APP_IDLE` | `-app-idle` | `15m` | How long an app backend may go without requests before it stops. |
+| `SHARTIFACTS_APP_KEEP_VERSIONS` | `-app-keep-versions` | `20` | How many of each app's newest versions that built keep their files, which is how far rollback reaches. The live version and versions that share links pin keep theirs too. Older versions stay in the history without files. Failed builds don't count toward it. See [apps.md](apps.md#versions-and-disk). |
+| `SHARTIFACTS_APP_DATA_QUOTA` | `-app-data-quota` | no limit | The most disk each app's backend data (`DATA_DIR`) may take, such as `2GiB` or `500MB`. The runner checks it every two minutes and when a backend starts. A backend over the quota is stopped and doesn't start again until its data shrinks or the quota grows. With Compose it's a runner setting. Backends see it as `DATA_QUOTA` (in bytes). |
 | `SHARTIFACTS_GO` | `-go` | `go` | The Go toolchain that builds Go backends. |
 | `SHARTIFACTS_RUNNER` | `-runner` | `false` | Run as the runner sidecar. The runner image sets this. |
 | `SHARTIFACTS_RUNNER_LISTEN` | `-runner-listen` | `:8090` | The runner's API address. Never publish it. |

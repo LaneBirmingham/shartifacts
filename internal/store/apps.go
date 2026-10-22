@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -38,9 +39,10 @@ const (
 	MaxAppFileBytes = 64 << 20
 	MaxAppBytes     = 256 << 20
 	maxAppPath      = 300
-	// KeepDeployments is how many recent versions keep their files; older ones are pruned
-	// unless live or pinned by a share link.
-	KeepDeployments = 20
+	// DefaultKeepVersions is how many of an app's newest ready versions keep their files
+	// unless Store.KeepVersions says otherwise; older ones are pruned unless live or pinned
+	// by a share link.
+	DefaultKeepVersions = 20
 )
 
 // Deployment statuses.
@@ -553,8 +555,14 @@ func (s *Store) StageDeployment(id string, in StageInput) (Deployment, error) {
 			return Deployment{}, err
 		}
 	}
+	// Unchanged files share the previous version's copy whether or not the deploy merged:
+	// an archive upload or a full file set usually resends a lot that did not change.
+	prevSrc := ""
+	if latest > 0 && !a.Deployments[latest-1].Pruned {
+		prevSrc = s.AppSourceDir(id, latest)
+	}
 	for p, b := range in.Files {
-		if err = writeTreeFile(src, p, b); err != nil {
+		if err = writeOrLink(src, prevSrc, p, b); err != nil {
 			return Deployment{}, err
 		}
 	}
@@ -624,14 +632,27 @@ func (s *Store) StageDeployment(id string, in StageInput) (Deployment, error) {
 // FinishDeployment records a build's outcome and, when it is ready and promote is set,
 // makes it live.
 func (s *Store) FinishDeployment(id string, result Deployment, promote bool) (App, error) {
+	a, pruned, err := s.finishDeployment(id, result, promote)
+	if err != nil {
+		return App{}, err
+	}
+	// The record already marks these versions pruned, so nothing serves or reads them now;
+	// deleting a large tree takes a while and must not hold up everyone waiting on s.mu.
+	for _, v := range pruned {
+		os.RemoveAll(s.versionDir(id, v))
+	}
+	return a, nil
+}
+
+func (s *Store) finishDeployment(id string, result Deployment, promote bool) (App, []int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, ok := s.apps[id]
 	if !ok {
-		return App{}, ErrAppNotFound
+		return App{}, nil, ErrAppNotFound
 	}
 	if result.Version < 1 || result.Version > len(a.Deployments) {
-		return App{}, errors.New("no such version")
+		return App{}, nil, errors.New("no such version")
 	}
 	a = copyApp(a)
 	now := time.Now().UTC()
@@ -651,31 +672,60 @@ func (s *Store) FinishDeployment(id string, result Deployment, promote bool) (Ap
 	pruned := s.prune(&a)
 	a, err := s.writeApp(a)
 	if err != nil {
-		return App{}, err
+		return App{}, nil, err
 	}
-	for _, v := range pruned {
-		os.RemoveAll(s.versionDir(id, v))
-	}
-	return a, nil
+	return a, pruned, nil
 }
 
-// prune marks old versions' files for removal, keeping the newest KeepDeployments, the live
-// version and versions share links pin. It returns the versions to remove.
+// KeepVersionsOrDefault is how many of an app's newest ready versions keep their files.
+func (s *Store) KeepVersionsOrDefault() int {
+	if s.KeepVersions > 0 {
+		return s.KeepVersions
+	}
+	return DefaultKeepVersions
+}
+
+// prune marks old versions' files for removal and returns the versions to remove. The newest
+// KeepVersions ready versions keep theirs, so a run of failed builds never costs a version
+// to roll back to. A failed version keeps its files, for its source and a merge to fix it,
+// only while it is among the newest KeepVersions deploys. The live version, versions share
+// links pin and builds still running always keep theirs.
 func (s *Store) prune(a *App) []int {
+	n := s.KeepVersionsOrDefault()
 	keep := map[int]bool{a.Live: true}
 	for _, sh := range a.Shares {
 		keep[sh.Version] = true
 	}
-	out := []int{}
-	for i := range a.Deployments {
+	out, ready := []int{}, 0
+	for i := len(a.Deployments) - 1; i >= 0; i-- {
 		d := &a.Deployments[i]
-		if d.Pruned || keep[d.Version] || d.Version > len(a.Deployments)-KeepDeployments || d.Status == StatusBuilding {
+		if d.Pruned {
 			continue
 		}
-		d.Pruned = true
-		out = append(out, d.Version)
+		if d.Status == StatusReady {
+			ready++
+		}
+		switch {
+		case keep[d.Version] || d.Status == StatusBuilding:
+		case d.Status == StatusReady && ready <= n:
+		case d.Status != StatusReady && d.Version > len(a.Deployments)-n:
+		default:
+			d.Pruned = true
+			out = append(out, d.Version)
+		}
 	}
 	return out
+}
+
+// OldestRollback is the oldest version that can still go live (its files are kept and it
+// built), or 0 when there is none.
+func (a App) OldestRollback() int {
+	for _, d := range a.Deployments {
+		if d.Status == StatusReady && !d.Pruned {
+			return d.Version
+		}
+	}
+	return 0
 }
 
 // SetLive promotes a ready version, or rolls back to one.
@@ -855,6 +905,23 @@ func writeTreeFile(root, p string, b []byte) error {
 		return fmt.Errorf("file %s: %w", p, err)
 	}
 	return nil
+}
+
+// writeOrLink writes file p of a new version's tree at root, or hard-links prevRoot's copy
+// of p when it holds exactly the same bytes, so an unchanged file takes no more space.
+func writeOrLink(root, prevRoot, p string, b []byte) error {
+	if prevRoot != "" {
+		prev := filepath.Join(prevRoot, filepath.FromSlash(p))
+		if info, err := os.Lstat(prev); err == nil && info.Mode().IsRegular() && info.Size() == int64(len(b)) {
+			if old, err := os.ReadFile(prev); err == nil && bytes.Equal(old, b) {
+				dst := filepath.Join(root, filepath.FromSlash(p))
+				if os.MkdirAll(filepath.Dir(dst), 0700) == nil && os.Link(prev, dst) == nil {
+					return nil
+				}
+			}
+		}
+	}
+	return writeTreeFile(root, p, b)
 }
 
 // linkOrCopy shares an unchanged file with the previous version; versions are immutable.

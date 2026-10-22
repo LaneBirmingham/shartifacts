@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -110,7 +112,7 @@ func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
 		// With sign-in on, the shell has no token: the URL carries an hour's grant instead.
 		uploadNote = "\nThe upload URL works for an hour without a token; list_media returns a fresh one."
 	}
-	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data. Delete only when asked, with delete_artifact's confirmation.
+	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data. Delete only when asked, with delete_artifact's confirmation.
 
 Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data files (CSV, JSON, text, Markdown, XLSX, PDF): upload files. Add ?name=FILE to the upload URL to keep a file's name; artifacts read data files with await window.fs.readFile(name, {encoding: 'utf8'}) (omit encoding for bytes). Do not manually transcribe base64 into source (2 MiB limit). Shell agents: run the curl command from list_media (raw bytes, max 256 MiB). Only clients that can supply bytes programmatically use begin_media_upload then upload_media_chunk (<=1048576 bytes per chunk, use returned offset, final:true on last). If the shell cannot reach the upload host, say so. list_media returns reusable URLs; embed them literally, e.g. <video controls playsinline src="/media/ID.mp4">, <audio controls src="/media/ID.mp3">, <img src="/media/ID.png">, <track kind="captions" src="/media/ID.vtt" srclang="en"> (set crossorigin="anonymous" on the parent). Autoplay needs muted playsinline. Verify media decodes/plays in the saved preview; report missing or corrupt media instead of claiming success.
 
@@ -120,8 +122,21 @@ Before updating, get_artifact for the latest base_version. For small changes sen
 
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
 ` + claudeNote + "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote})
-	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List artifacts (id, title, kind, version, description, icon, tags, pinned, open_comments)."}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
-		return nil, map[string]any{"artifacts": s.Store.List()}, nil
+	type ListInput struct {
+		Limit  int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
+		Cursor string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
+	}
+	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List artifacts, most recently updated first, 50 at a time (id, title, kind, version, description, icon, tags, pinned, open_comments); total counts them all and next_cursor fetches the next page. To find something specific, search_artifacts is quicker."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, any, error) {
+		all := s.Store.List()
+		page, next, err := pageOf(all, func(a store.Summary) (time.Time, string) { return a.UpdatedAt, a.ID }, in.Cursor, in.Limit)
+		if err != nil {
+			return nil, nil, err
+		}
+		out := map[string]any{"artifacts": page, "total": len(all)}
+		if next != "" {
+			out["next_cursor"] = next
+		}
+		return nil, out, nil
 	})
 	type SearchInput struct {
 		Query string `json:"query" jsonschema:"Words to find in titles, tags, descriptions, rendered text, notes and comments (typos and word forms are fine), with optional filters: \"exact phrase\", -exclude, kind:react, tag:finance or #finance, is:pinned, has:comments|open|files|video|audio|image|chart|diagram|table|form|3d|math|data, updated:today|week|month|year|30d|2026-03, created:…, before:/after: dates"`
@@ -261,9 +276,34 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	s.addCommentTool(m)
 	s.addAgentTools(m)
 	s.addAppTools(m, baseURL, links)
-	mcp.AddTool(m, &mcp.Tool{Name: "list_media", Description: "List uploaded media (url, MIME type, size; URLs are reusable) plus the upload URL and a ready-to-run curl command for local files."}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
-		items, e := s.Store.ListMedia()
-		return nil, map[string]any{"media": items, "upload_url": info.UploadURL, "base_url": info.BaseURL, "method": info.Method, "max_file_bytes": info.MaxFileBytes, "curl_example": info.CurlExample}, e
+	type ListMediaInput struct {
+		Name   string `json:"name,omitempty" jsonschema:"Only files whose name contains this, in any case"`
+		Type   string `json:"type,omitempty" jsonschema:"Only this MIME type or family, e.g. video or image/png"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"At most this many (default 50, max 200)"`
+		Cursor string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
+	}
+	mcp.AddTool(m, &mcp.Tool{Name: "list_media", Description: "List uploaded media, newest first, 50 at a time (url, MIME type, size, name; URLs are reusable), filtered by name or type; total counts the matches and next_cursor fetches the next page. Also returns the upload URL and a ready-to-run curl command for local files."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListMediaInput) (*mcp.CallToolResult, any, error) {
+		items, err := s.Store.ListMedia()
+		if err != nil {
+			return nil, nil, err
+		}
+		name, kind := strings.ToLower(strings.TrimSpace(in.Name)), strings.ToLower(strings.TrimSpace(in.Type))
+		matches := items[:0]
+		for _, it := range items {
+			if (name == "" || strings.Contains(strings.ToLower(it.Name), name)) && (kind == "" || it.MIMEType == kind || strings.HasPrefix(it.MIMEType, strings.TrimSuffix(kind, "/")+"/")) {
+				matches = append(matches, it)
+			}
+		}
+		sort.SliceStable(matches, func(i, j int) bool { return matches[i].UploadedAt.After(*matches[j].UploadedAt) })
+		page, next, err := pageOf(matches, func(m store.Media) (time.Time, string) { return *m.UploadedAt, m.ID }, in.Cursor, in.Limit)
+		if err != nil {
+			return nil, nil, err
+		}
+		out := map[string]any{"media": page, "total": len(matches), "upload_url": info.UploadURL, "base_url": info.BaseURL, "method": info.Method, "max_file_bytes": info.MaxFileBytes, "curl_example": info.CurlExample}
+		if next != "" {
+			out["next_cursor"] = next
+		}
+		return nil, out, nil
 	})
 	if !s.NoChunkUpload {
 		type BeginMediaInput struct {
