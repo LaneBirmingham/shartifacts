@@ -1,0 +1,7 @@
+data/
+node_modules/
+bin/
+test-results/
+.DS_Store
+.env
+.env.local

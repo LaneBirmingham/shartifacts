@@ -1,0 +1,53 @@
+/* "Connect an agent" (connect.js), shared by the apps hub and the artifacts workspace. */
+.connect-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+.connect-dialog h2 {
+  margin: 6px 0 8px;
+}
+.connect-dialog .copy-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.connect-dialog .copy-row input {
+  flex: 1;
+  min-width: 0;
+  font: 12px var(--font-code);
+}
+.connect-clients {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 4px;
+}
+.connect-client-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.connect-client-head button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.connect-client pre {
+  margin: 6px 0 0;
+  padding: 12px 14px;
+  background: var(--surface-dark);
+  color: var(--on-dark);
+  border-radius: var(--radius-md);
+  font: 12px/1.55 var(--font-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.connect-next {
+  margin: 14px 0 6px;
+}
+.connect-dialog .fineprint {
+  font-size: 13px;
+  color: var(--muted);
+}
+.connect-dialog .fineprint a {
+  color: inherit;
+}

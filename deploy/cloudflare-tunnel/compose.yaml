@@ -1,0 +1,30 @@
+# Public sharing through a Cloudflare Tunnel: no open ports and no public IP needed, which
+# suits a home server. Cloudflare terminates TLS and the tunnel carries requests here.
+# Turn it on in .env:
+#
+#   COMPOSE_FILE=compose.yaml:deploy/cloudflare-tunnel/compose.yaml
+#   CLOUDFLARE_TUNNEL_TOKEN=eyJ...                   # the tunnel's token
+#   SHARTIFACTS_SHARE_ORIGIN=https://share.example.com
+#
+# The tunnel's public hostnames and their routes live in Cloudflare (dashboard or API):
+# route the share hostname (and app hostnames), and nothing else, to http://shartifacts:8081,
+# the port that serves only share and app links. Never route the workspace (port 8080)
+# through a tunnel: shartifacts has no login. See docs/sharing.md.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: shartifacts-cloudflared
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      shartifacts:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

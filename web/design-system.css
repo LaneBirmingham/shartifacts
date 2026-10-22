@@ -1,0 +1,293 @@
+/* Shared by the workspace and the MCP get_design_system authoring tool. */
+/* Open substitutes for Copernicus, StyreneB and the code face, served by shartifacts.
+   Cormorant Garamond ships its documented 500 cut, which also covers weight 400. */
+@font-face {
+  font-family: "Inter";
+  src: url("/vendor/fonts/inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("/vendor/fonts/cormorant-garamond-500.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("/vendor/fonts/cormorant-garamond-500-italic.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/vendor/fonts/jetbrains-mono.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --canvas: #faf9f5;
+  --primary: #cc785c;
+  --primary-active: #a9583e;
+  --primary-disabled: #e6dfd8;
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
+  --surface-soft: #f5f0e8;
+  --surface-card: #efe9de;
+  --surface-cream-strong: #e8e0d2;
+  --surface-dark: #181715;
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+  --hairline: #e6dfd8;
+  --hairline-soft: #ebe6df;
+  --ink: #141413;
+  --body-strong: #252523;
+  --body: #3d3d3a;
+  --muted: #6c6a64;
+  --muted-soft: #8e8b82;
+  --on-primary: #ffffff;
+  --on-dark: #faf9f5;
+  --on-dark-soft: #a09d96;
+  --success: #5db872;
+  --warning: #d4a017;
+  --error: #c64545;
+  --font-display:
+    Copernicus, "Tiempos Headline", "Cormorant Garamond", "EB Garamond",
+    Garamond, "Times New Roman", serif;
+  --font-body:
+    StyreneB, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-code:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+  --focus-ring: 0 0 0 3px rgb(204 120 92 / 15%);
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--canvas);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font: 16px/1.55 var(--font-body);
+  color: var(--ink);
+  background: var(--canvas);
+}
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+h1 {
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 1.05;
+  letter-spacing: -1.5px;
+}
+h2 {
+  font-size: clamp(28px, 4vw, 48px);
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+h3 {
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+p {
+  color: var(--body);
+  line-height: 1.55;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+.button {
+  min-height: 40px;
+  padding: 12px 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+button.primary,
+.button.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+button.primary:hover,
+button.primary:active,
+.button.primary:hover,
+.button.primary:active {
+  background: var(--primary-active);
+  border-color: var(--primary-active);
+}
+button:disabled,
+.button:disabled {
+  background: var(--primary-disabled);
+  color: var(--muted);
+  border-color: var(--primary-disabled);
+  cursor: default;
+}
+input,
+select,
+textarea {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  min-width: 0;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+a {
+  color: var(--primary);
+}
+a:active {
+  text-decoration: underline;
+}
+code,
+pre {
+  font-family: var(--font-code);
+  font-size: 14px;
+  line-height: 1.6;
+}
+pre {
+  padding: var(--space-lg);
+  background: var(--surface-dark);
+  color: var(--on-dark);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+}
+.artifact-page {
+  max-width: 1200px;
+  margin: auto;
+  padding: var(--space-section) var(--space-xl);
+}
+.artifact-page > section + section {
+  margin-top: var(--space-section);
+}
+.card {
+  background: var(--surface-card);
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+}
+.card-dark {
+  background: var(--surface-dark);
+  color: var(--on-dark);
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+}
+.card-dark p {
+  color: var(--on-dark-soft);
+}
+.card-dark button {
+  background: var(--surface-dark-elevated);
+  color: var(--on-dark);
+}
+.card-outline {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+}
+.callout {
+  background: var(--primary);
+  color: var(--on-primary);
+  padding: var(--space-xxl);
+  border-radius: var(--radius-lg);
+}
+.callout h2,
+.callout h3,
+.callout p {
+  color: inherit;
+}
+.callout button {
+  background: var(--canvas);
+  color: var(--ink);
+  border-color: var(--canvas);
+}
+.badge {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.badge-coral {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.category-tab {
+  min-height: 0;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+}
+.category-tab.active,
+.category-tab[aria-selected="true"] {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 767px) {
+  .artifact-page {
+    padding: var(--space-xxl) var(--space-lg);
+  }
+}

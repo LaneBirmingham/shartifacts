@@ -1,0 +1,33 @@
+# The public edge for shartifacts: HTTPS for the share hostname and, with
+# SHARTIFACTS_APP_ORIGIN, every app's own hostname. No hostnames are written here.
+# Caddy gets a certificate the first time a name is visited, and only after
+# shartifacts confirms it serves that name (the share hostname, or the hostname of
+# an app that exists), so the workspace never gets a public certificate or route.
+# The question goes to the private port, 8080; visitors go to the public one, 8081.
+{
+	on_demand_tls {
+		ask http://shartifacts:8080/api/tls-allowed
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+
+	# What public visitors may reach: share pages (/s/), public app links (/p/),
+	# and the scripts, styles and libraries those pages load. shartifacts refuses
+	# everything else on these hostnames too; this keeps it from even arriving.
+	@public path /s/* /p/* /vendor/* /runtime.js /bridge.js /icons.js /share.js /theme.js /view.css /design-system.css /dark.css /favicon.svg
+	handle @public {
+		# Port 8081 serves only share and app links, whatever arrives. Caddy passes the
+		# visitor's Host through, which is how shartifacts tells each app's hostname
+		# apart. Streams flush immediately.
+		reverse_proxy shartifacts:8081 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 404
+	}
+}

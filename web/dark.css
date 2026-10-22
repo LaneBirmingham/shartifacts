@@ -1,0 +1,46 @@
+/* The workspace's light/dark theme. theme.js sets data-theme from the saved choice or the
+   system's. Only the app's own pages load this; the design system given to agents for
+   artifacts stays as it is. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #1c1b19;
+  --surface-soft: #232220;
+  --surface-card: #2a2825;
+  --surface-cream-strong: #353230;
+  --hairline: #3a3733;
+  --hairline-soft: #2f2c29;
+  --primary-disabled: #3a3733;
+  --ink: #f5f2ec;
+  --body-strong: #e8e4dc;
+  --body: #cfcac0;
+  --muted: #a8a49c;
+  --muted-soft: #8e8b82;
+  --surface-dark: #141312;
+  --surface-dark-soft: #181715;
+  --surface-dark-elevated: #2a2825;
+  --focus-ring: 0 0 0 3px rgb(204 120 92 / 30%);
+  --warning-text: #e3b341;
+}
+:root[data-theme="dark"] #toast {
+  background: var(--surface-card);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+:root[data-theme="dark"] button.primary:disabled {
+  color: var(--muted);
+}
+/* The quiet circular switch between the two, in each page's bar. */
+button.theme-toggle {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

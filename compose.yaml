@@ -1,0 +1,91 @@
+# shartifacts: the workspace, and the runner sidecar that builds and runs app backends.
+#
+#   docker compose up -d --build
+#
+# Settings come from .env next to this file (copy .env.example). With no .env it listens on
+# 127.0.0.1:8080, keeps everything in ./data and shares nothing publicly. Public sharing adds
+# an edge from deploy/ (Caddy or a Cloudflare tunnel) through COMPOSE_FILE in .env.
+# docs/configuration.md describes every setting.
+name: shartifacts
+
+services:
+  shartifacts:
+    build: .
+    image: shartifacts:local
+    container_name: shartifacts
+    ports:
+      # Who can reach the workspace. 127.0.0.1 = this machine only (and a proxy on it);
+      # a LAN IP or 0.0.0.0 = your network. Never forward this port from your router.
+      - "${SHARTIFACTS_BIND:-127.0.0.1}:${SHARTIFACTS_PORT:-8080}:8080"
+      # With public sharing on: the listener that serves only share and app links, for a
+      # reverse proxy of your own to forward to. The bundled edges in deploy/ reach it over
+      # the compose network and need nothing published here.
+      - "${SHARTIFACTS_SHARE_BIND:-127.0.0.1}:${SHARTIFACTS_SHARE_PORT:-8081}:8081"
+    volumes:
+      # Everything shartifacts keeps. Back this folder up.
+      - ${SHARTIFACTS_DATA:-./data}:/data
+    environment:
+      SHARTIFACTS_ALLOWED_HOSTS: ${SHARTIFACTS_ALLOWED_HOSTS:-}
+      SHARTIFACTS_PUBLIC_ORIGIN: ${SHARTIFACTS_PUBLIC_ORIGIN:-}
+      SHARTIFACTS_SHARE_ORIGIN: ${SHARTIFACTS_SHARE_ORIGIN:-}
+      SHARTIFACTS_APP_ORIGIN: ${SHARTIFACTS_APP_ORIGIN:-}
+      SHARTIFACTS_AUTH_PROXY: ${SHARTIFACTS_AUTH_PROXY:-}
+      SHARTIFACTS_CONNECTORS: ${SHARTIFACTS_CONNECTORS:-}
+      SHARTIFACTS_NO_CHUNK_UPLOAD: ${SHARTIFACTS_NO_CHUNK_UPLOAD:-}
+      SHARTIFACTS_CLAUDE_MODEL: ${SHARTIFACTS_CLAUDE_MODEL:-}
+      # Empty runs app backends inside this container (prebuilt binaries only).
+      SHARTIFACTS_RUNNER_URL: ${SHARTIFACTS_RUNNER_URL-http://runner:8090}
+      # Optional: lets artifacts call Claude. Empty keeps shartifacts fully offline.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TZ: ${TZ:-UTC}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Builds and runs app backends (Go built from source, or prebuilt binaries). It mounts only
+  # the apps directory, so app code never sees artifacts, media or the rest of /data, and its
+  # limits keep a runaway app from taking shartifacts down with it. Not published: shartifacts
+  # reaches it over the compose network with a token both read from the apps directory.
+  runner:
+    build:
+      context: .
+      target: runner
+    image: shartifacts-runner:local
+    container_name: shartifacts-runner
+    volumes:
+      - ${SHARTIFACTS_DATA:-./data}/apps:/apps
+    environment:
+      SHARTIFACTS_APP_PROCS: ${SHARTIFACTS_APP_PROCS:-}
+      SHARTIFACTS_APP_IDLE: ${SHARTIFACTS_APP_IDLE:-}
+      # Where Go modules come from at build time; "off" builds stdlib/vendored apps only.
+      GOPROXY: ${SHARTIFACTS_GOPROXY:-https://proxy.golang.org,direct}
+      TZ: ${TZ:-UTC}
+    # Starts once shartifacts has created the apps directory as UID 10001.
+    depends_on:
+      shartifacts:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: ${SHARTIFACTS_RUNNER_MEMORY:-2g}
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

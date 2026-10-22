@@ -1,0 +1,34 @@
+# Public sharing with Caddy: automatic HTTPS for your share hostname (and app hostnames).
+# Turn it on in .env:
+#
+#   COMPOSE_FILE=compose.yaml:deploy/caddy/compose.yaml
+#   SHARTIFACTS_SHARE_ORIGIN=https://share.example.com
+#   SHARTIFACTS_APP_ORIGIN=https://*.share.example.com   # optional
+#
+# Needs DNS records for those names pointing at this machine, and ports 80 and 443 open to
+# the internet (a VPS, or port forwarding at home). See docs/sharing.md.
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: shartifacts-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      shartifacts:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

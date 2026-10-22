@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)" />
+    <title>shartifacts — apps</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/hub.css" />
+    <link rel="stylesheet" href="/connect.css" />
+    <link rel="stylesheet" href="/dark.css" />
+    <script src="/theme.js"></script>
+    <script src="/icons.js" defer></script>
+    <script src="/connect.js" defer></script>
+    <script src="/hub.js" defer></script>
+  </head>
+  <body>
+    <header class="hub-bar">
+      <a class="brand" href="/" aria-label="shartifacts apps home"
+        ><span class="brand-mark" aria-hidden="true"
+          ><svg viewBox="0 0 40 40" fill="currentColor">
+            <path
+              d="M18 2h4l1 13L33 6l3 3-10 10 12-1v4l-13 1 9 10-3 3-10-10 1 12h-4l-1-13L7 34l-3-3 10-10-12 1v-4l13-1L6 7l3-3 10 10z"
+            /></svg></span
+        ><span class="brand-name">shartifacts</span></a
+      >
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Open apps">
+        <button class="tab home-tab" role="tab" id="tab-home" aria-controls="home" aria-selected="true" data-tab="home">
+          <span class="tab-icon" aria-hidden="true">⌂</span><span class="tab-name">Apps</span>
+        </button>
+      </nav>
+      <div class="hub-actions">
+        <a class="button quiet" href="/artifacts" id="to-artifacts">Artifacts</a
+        ><button id="connect" class="quiet" type="button" data-connect>Connect an agent</button
+        ><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button>
+      </div>
+    </header>
+
+    <main id="panels" class="panels">
+      <section id="home" class="panel home" role="tabpanel" aria-labelledby="tab-home">
+        <div class="home-inner">
+          <div class="hero">
+            <div>
+              <div class="eyebrow">FULL-STACK MICRO FRONTENDS</div>
+              <h1>Apps that <em>run.</em></h1>
+              <p class="lede">
+                A React front, a Go back, data that stays. Each app opens in its own tab,
+                every deploy is a version you can roll back, and a link can share it with
+                anyone.
+              </p>
+              <div class="hero-actions">
+                <button id="new-app" class="primary" type="button">＋ New app</button
+                ><button id="show-guide" class="quiet" type="button">How apps are built</button
+                ><button class="quiet hero-connect" type="button" data-connect>Connect your agent</button>
+              </div>
+            </div>
+            <dl class="runtime" id="runtime" aria-label="Runtime">
+              <div><dt>Backends</dt><dd id="rt-backends">…</dd></div>
+              <div><dt>Sandbox</dt><dd id="rt-sandbox">…</dd></div>
+              <div><dt>Public links</dt><dd id="rt-share">…</dd></div>
+            </dl>
+          </div>
+          <div class="section-heading">
+            <h2>Your apps</h2>
+            <span id="app-count" class="count"></span>
+          </div>
+          <p id="load-error" class="load-error" role="status" hidden></p>
+          <div id="app-grid" class="app-grid"></div>
+          <div id="empty" class="empty" hidden>
+            <p class="empty-title">No apps yet.</p>
+            <p>
+              Ask your agent to build one, such as <em>“a small expenses app in shartifacts”</em>.
+              It learns how apps are built here over MCP, then deploys, tests and shares them. Or
+              start from the notes template to see a React page talk to a Go backend.
+            </p>
+            <div class="empty-actions">
+              <button id="empty-connect" class="primary" type="button" data-connect>Connect your agent</button
+              ><button id="empty-template" class="quiet" type="button">Deploy the notes template</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="app-panel">
+      <section class="panel app" role="tabpanel">
+        <div class="app-toolbar">
+          <div class="app-title">
+            <span class="app-icon" aria-hidden="true"></span><strong class="app-name"></strong
+            ><select class="version" aria-label="Version shown"></select
+            ><span class="pill status" role="status"></span>
+          </div>
+          <div class="app-tools">
+            <button type="button" class="reload quiet" title="Reload the app" aria-label="Reload">⟳</button
+            ><a class="button quiet open" target="_blank" rel="noopener" title="Open on its own">Open ↗</a
+            ><button type="button" class="quiet" data-drawer="versions">Versions</button
+            ><button type="button" class="quiet" data-drawer="logs">Logs<span class="badge" hidden></span></button
+            ><button type="button" class="quiet share">Share</button
+            ><button type="button" class="quiet" data-drawer="settings" aria-label="Settings" title="Settings">⚙</button>
+          </div>
+        </div>
+        <div class="notice" hidden><span></span> <button type="button" class="quiet load-live">Load it</button></div>
+        <div class="app-body">
+          <div class="frame-wrap">
+            <iframe
+              title="App"
+              sandbox="allow-scripts allow-forms allow-modals allow-downloads allow-popups allow-popups-to-escape-sandbox allow-pointer-lock"
+              allow="fullscreen *; clipboard-write *; camera *; microphone *; geolocation *; display-capture *"
+              referrerpolicy="no-referrer"
+            ></iframe>
+            <div class="frame-empty" hidden></div>
+          </div>
+          <aside class="drawer" hidden>
+            <div class="drawer-heading">
+              <h3 class="drawer-title"></h3>
+              <button type="button" class="quiet close-drawer" aria-label="Close panel">×</button>
+            </div>
+            <div class="drawer-body"></div>
+          </aside>
+        </div>
+      </section>
+    </template>
+
+    <dialog id="new-dialog">
+      <form id="new-form" method="dialog">
+        <div class="dialog-heading">
+          <span class="eyebrow">SOMETHING THAT RUNS</span
+          ><button type="button" data-close aria-label="Close">×</button>
+        </div>
+        <h2>A new app</h2>
+        <label>Name<input name="name" required maxlength="100" placeholder="Team lunch orders" /></label>
+        <label>Description<input name="description" maxlength="300" placeholder="One sentence for its card" /></label>
+        <label>Icon<input name="icon" maxlength="32" placeholder="list, chart, money… or an emoji" /></label>
+        <fieldset class="source-choice">
+          <legend>Start from</legend>
+          <label class="choice"
+            ><input type="radio" name="source" value="template" checked />
+            <span><strong>The notes template</strong><small>React + TypeScript frontend, Go backend, data on disk</small></span></label
+          >
+          <label class="choice"
+            ><input type="radio" name="source" value="archive" />
+            <span><strong>An archive</strong><small>.zip or .tar.gz of the project (the build guide describes the layout)</small></span></label
+          >
+        </fieldset>
+        <label class="button file-label" id="archive-label" hidden
+          >Choose archive<input id="archive" type="file" accept=".zip,.tar,.tgz,.gz,application/zip,application/gzip,application/x-tar"
+        /></label>
+        <p class="file-name" id="archive-name"></p>
+        <div class="dialog-bottom">
+          <span class="fineprint">The first deploy builds it and starts the backend.</span
+          ><button class="primary" type="submit" id="create-app">Create & deploy ↗</button>
+        </div>
+        <p class="form-error" role="alert"></p>
+      </form>
+    </dialog>
+
+    <dialog id="guide-dialog" class="wide">
+      <div class="dialog-heading">
+        <span class="eyebrow">THE BUILD CONTRACT</span><button data-close aria-label="Close">×</button>
+      </div>
+      <h2>How apps are built</h2>
+      <p>
+        Agents get this from <code>get_app</code> with <code>guide: true</code>. The stack is fixed so every app deploys the same
+        way: a static or React/TypeScript frontend, and a Go (or prebuilt Rust) backend.
+      </p>
+      <pre id="guide-text" class="guide"></pre>
+    </dialog>
+
+    <dialog id="share-dialog">
+      <div class="dialog-heading">
+        <span class="eyebrow">SHARE OUTSIDE YOUR NETWORK</span><button data-close aria-label="Close">×</button>
+      </div>
+      <h2>Public links</h2>
+      <p>
+        Anyone with a link can use this app, frontend and backend, without reaching the rest of
+        shartifacts. Revoke a link to end it at once.
+      </p>
+      <p id="share-off" class="fineprint" hidden>
+        Public links are off, so this server runs in private mode. To turn them on, set
+        <code>SHARTIFACTS_SHARE_ORIGIN</code> to a hostname of yours and route it to port 8081;
+        <a href="https://github.com/LaneBirmingham/shartifacts/blob/main/docs/sharing.md" target="_blank" rel="noopener">docs/sharing.md</a>
+        has the steps, or ask your agent.
+      </p>
+      <div id="share-list" class="share-list"></div>
+      <label class="check"><input type="checkbox" id="share-readonly" /> Read-only: visitors can look, but the backend refuses their changes</label>
+      <div class="dialog-bottom">
+        <button id="share-live" type="button">Link that follows live</button
+        ><button id="share-version" class="primary" type="button">Link to this version</button>
+      </div>
+    </dialog>
+
+
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

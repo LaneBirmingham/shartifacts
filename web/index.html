@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)" />
+    <title>shartifacts — a home for things you make</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/connect.css" />
+    <link rel="stylesheet" href="/dark.css" />
+    <script src="/theme.js"></script>
+    <script src="/bridge.js" defer></script>
+    <script src="/icons.js" defer></script>
+    <script src="/connect.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <button id="library-backdrop" class="library-backdrop" aria-label="Close library" hidden></button>
+    <aside class="sidebar" id="sidebar" aria-label="Library">
+      <button id="close-library" class="mobile-only">Close library ×</button>
+      <a class="brand" href="/artifacts" aria-label="shartifacts artifacts home"
+        ><span class="brand-mark" aria-hidden="true"
+          ><svg viewBox="0 0 40 40" fill="currentColor">
+            <path
+              d="M18 2h4l1 13L33 6l3 3-10 10 12-1v4l-13 1 9 10-3 3-10-10 1 12h-4l-1-13L7 34l-3-3 10-10-12 1v-4l13-1L6 7l3-3 10 10z"
+            /></svg></span
+        ><span>shartifacts<small>Your own little internet</small></span></a
+      >
+      <button id="new" class="primary">＋ New artifact <kbd>N</kbd></button>
+      <div class="search">
+        <span aria-hidden="true">⌕</span
+        ><input
+          id="search"
+          type="search"
+          aria-label="Search artifacts"
+          aria-describedby="search-help"
+          placeholder="Search titles, content, tags…"
+          autocomplete="off"
+          spellcheck="false"
+        /><kbd title="Press / to search">/</kbd>
+      </div>
+      <p id="search-help" class="visually-hidden">
+        Typos are fine. Filters: kind:react, tag:finance or #finance, is:pinned, has:comments, has:video, updated:week, "exact phrase", -exclude.
+      </p>
+      <p id="did-you-mean" class="did-you-mean" hidden>
+        Did you mean <button id="suggestion" type="button"></button>?
+      </p>
+      <div id="tag-chips" class="tag-chips" role="group" aria-label="Filter by tag" hidden></div>
+      <div class="library-heading">
+        <span id="library-label">THE LIBRARY</span><span id="count">0</span>
+      </div>
+      <div class="library-filters">
+        <select id="filter" aria-label="Filter by type">
+          <option value="">All types</option>
+          <option>html</option>
+          <option>react</option>
+          <option>markdown</option>
+          <option>slides</option>
+          <option>svg</option>
+          <option>mermaid</option>
+          <option>code</option>
+        </select>
+        <select id="when" aria-label="Filter by when it changed">
+          <option value="">Any time</option>
+          <option value="today">Today</option>
+          <option value="week">Past week</option>
+          <option value="month">Past month</option>
+          <option value="year">Past year</option>
+        </select>
+        <select id="has" aria-label="Filter by what it contains">
+          <option value="">Contains…</option>
+          <option value="comments">Comments</option>
+          <option value="open">Open threads</option>
+          <option value="video">Video</option>
+          <option value="audio">Audio</option>
+          <option value="image">Images</option>
+          <option value="chart">Charts</option>
+          <option value="diagram">Diagrams</option>
+          <option value="table">Tables</option>
+          <option value="form">Forms</option>
+          <option value="math">Math</option>
+          <option value="3d">3D</option>
+          <option value="data">Data</option>
+          <option value="files">Several files</option>
+        </select>
+      </div>
+      <nav id="library" aria-label="Artifact library"></nav>
+      <footer>
+        <a class="button footer-link" href="/" id="to-apps">▦ Apps <span>↗</span></a>
+        <button id="media">＋ Media library</button>
+        <button id="connect" data-connect>⌁ Connect an agent</button>
+        <p class="footer-note"><span><i></i> Local network · yours to keep</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button></p>
+      </footer>
+    </aside>
+    <main class="workspace">
+      <header class="topbar">
+        <button id="toggle-library" class="mobile-only" aria-controls="sidebar" aria-expanded="false">Library</button>
+        <span id="crumb">Workspace <span>/</span> Your artifacts</span
+        ><button id="comments-link" class="artifact-control" aria-controls="comments" aria-expanded="false">Comments</button>
+        <button id="toggle-details" class="artifact-control" aria-controls="artifact-details" aria-expanded="false">Details</button>
+        <button id="fullscreen" class="artifact-control" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+        <button id="viewer" class="viewer-chip" title="Who is using this browser">Who are you?</button>
+        <span class="local-badge">● SELF HOSTED</span>
+      </header>
+      <section id="welcome" class="welcome">
+        <div class="eyebrow">SMALL IDEAS. REAL THINGS.</div>
+        <h1>A home for<br />things you <em>make.</em></h1>
+        <p>
+          Little tools, living documents, and experiments.<br />Made by you and
+          your agents. Kept on your network.
+        </p>
+        <div class="welcome-actions">
+          <button id="welcome-connect" class="primary" data-connect>
+            Connect your agent</button
+          ><button id="start" class="quiet">Paste or import source</button
+          ><button id="example" class="quiet">
+            Try an interactive example
+          </button>
+        </div>
+        <div class="specimen" aria-hidden="true">
+          <div class="specimen-bar"><span></span> a-little-idea.html</div>
+          <pre>
+&lt;article class="card"&gt;
+  &lt;h1&gt;Make it real.&lt;/h1&gt;
+  &lt;video controls
+    playsinline
+    src="/media/your-clip.mp4"&gt;
+  &lt;/video&gt;
+&lt;/article&gt;</pre>
+          <small>Your source. Your media. Your space.</small>
+        </div>
+        <div class="welcome-bottom">
+          <span>01 — CREATE</span><span>02 — ITERATE</span
+          ><span>03 — KEEP & SHARE</span>
+        </div>
+        <section id="gallery" class="gallery" aria-labelledby="gallery-heading" hidden>
+          <h2 id="gallery-heading">Recently made</h2>
+          <div id="gallery-cards" class="gallery-cards"></div>
+        </section>
+      </section>
+      <section id="artifact" hidden>
+        <div class="artifact-heading" id="artifact-details">
+          <div>
+            <div class="eyebrow" id="type-label">HTML / ARTIFACT</div>
+            <h1 id="artifact-name"></h1>
+            <p id="artifact-description" class="artifact-description" hidden></p>
+            <p id="artifact-tags" class="tag-chips artifact-tags" hidden></p>
+            <p id="saved-at"></p>
+            <div id="related" class="related" hidden>
+              <span class="eyebrow">RELATED</span>
+              <nav id="related-list" aria-label="Related artifacts"></nav>
+            </div>
+          </div>
+          <div class="artifact-actions">
+            <a id="open-view" class="button" target="_blank" rel="noopener">Open ↗</a
+            ><button id="share">Copy link</button
+            ><a id="download" class="button" download>Download ↓</a
+            ><button id="more" aria-label="More artifact actions">•••</button>
+          </div>
+        </div>
+        <div id="more-menu" class="more-menu" hidden>
+          <button id="share-out">Share read-only link…</button
+          ><button id="pin">Pin to top of library</button
+          ><button id="copy-source">Copy source</button
+          ><button id="fork">Duplicate artifact</button
+          ><button id="delete" class="danger">Delete artifact & history</button>
+        </div>
+        <div id="remote-change" class="notice" hidden>
+          A newer version is available. Your draft is kept here.
+          <button id="reload">Load latest version</button>
+        </div>
+        <div class="workbar">
+          <div class="tabs" role="group" aria-label="Workspace view">
+            <button data-view="preview" class="active">Preview</button
+            ><button data-view="split">Split</button
+            ><button data-view="source">Source</button
+            ><button data-view="changes">Changes</button>
+          </div>
+          <div class="version-controls">
+            <label for="versions">Version</label
+            ><select id="versions" aria-label="Artifact version"></select
+            ><button id="restore" hidden>Restore</button
+            ><button id="edit">Edit source</button
+            ><button id="discard" hidden>Discard draft</button
+            ><button id="save" class="primary" hidden>Save version</button>
+          </div>
+        </div>
+        <div id="editor-meta" class="editor-meta" hidden>
+          <label>Title<input id="edit-title" maxlength="200" /></label
+          ><label
+            >Type<select id="edit-kind">
+              <option>html</option>
+              <option>react</option>
+              <option>markdown</option>
+              <option>slides</option>
+              <option>svg</option>
+              <option>mermaid</option>
+              <option>code</option>
+            </select></label
+          ><label class="icon-field"
+            >Icon<input
+              id="edit-icon"
+              placeholder="chart"
+              maxlength="32"
+          /></label
+          ><label class="description-field"
+            >Description<input
+              id="edit-description"
+              placeholder="One sentence for the library"
+              maxlength="300"
+          /></label
+          ><label class="tags-field"
+            >Tags<input
+              id="edit-tags"
+              placeholder="finance, home"
+              maxlength="700"
+              autocomplete="off"
+          /></label
+          ><div id="tag-suggestions" class="tag-suggestions" hidden></div
+          ><label class="note-field"
+            >Version note<input
+              id="edit-note"
+              placeholder="What changed?"
+              maxlength="1000"
+          /></label>
+        </div>
+        <div id="panes" class="panes" data-view="preview">
+          <button id="exit-fullscreen" hidden>Exit fullscreen ×</button>
+          <div id="source-pane" class="source-pane">
+            <div class="source-label">
+              <span>SOURCE</span
+              ><span id="files" class="files" hidden
+                ><select id="file-select" aria-label="File"></select
+                ><button id="add-file" type="button">+ File</button
+                ><button id="remove-file" type="button">Remove</button></span
+              ><span id="draft-status">Saved</span>
+            </div>
+            <textarea
+              id="source"
+              aria-label="Artifact source"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+            ></textarea>
+          </div>
+          <div class="preview-pane">
+            <div class="preview-label">
+              <span>LIVE ARTIFACT</span
+              ><span>Sandboxed · uploaded media enabled</span>
+            </div>
+            <iframe
+              id="preview"
+              sandbox="allow-scripts allow-forms allow-modals allow-downloads allow-popups allow-popups-to-escape-sandbox allow-pointer-lock"
+              allow="fullscreen *; clipboard-write *; camera *; microphone *; geolocation *; display-capture *"
+              title="Artifact preview"
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </div>
+          <div id="changes-pane" class="changes-pane">
+            <div class="source-label">
+              <span id="changes-title">CHANGES</span
+              ><label
+                >Compared with
+                <select id="compare-base" aria-label="Compare with version"></select
+              ></label>
+            </div>
+            <div id="diff" class="diff" role="region" aria-label="Line changes" tabindex="0"></div>
+          </div>
+        </div>
+        <div class="artifact-foot">
+          <span id="revision-note"></span
+          ><span>Preview updates as you type · <kbd>⌘ / Ctrl + S</kbd></span>
+        </div>
+        <section id="comments" class="comments" aria-labelledby="comments-heading">
+          <div class="comments-heading">
+            <h2 id="comments-heading">Comments</h2>
+            <label class="show-resolved"
+              ><input type="checkbox" id="show-resolved" /> Show resolved</label
+            ><button id="close-comments" type="button" aria-label="Close comments">×</button>
+          </div>
+          <p class="fineprint">
+            Notes for yourself or your agent. Agents read and answer them with
+            <code>artifact_comments</code>.
+          </p>
+          <div id="threads" class="threads"></div>
+          <form id="comment-form" class="comment-form">
+            <blockquote id="comment-quote" class="comment-quote" hidden></blockquote>
+            <textarea
+              name="body"
+              rows="3"
+              required
+              maxlength="10000"
+              aria-label="New comment"
+              placeholder="What should change? Select source text first to quote it."
+            ></textarea>
+            <div class="comment-form-actions">
+              <button type="button" id="clear-quote" hidden>Remove quote</button
+              ><button class="primary" type="submit">Comment</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+    <dialog id="create-dialog">
+      <form id="create-form">
+        <div class="dialog-heading">
+          <span class="eyebrow">SOMETHING NEW</span
+          ><button type="button" data-close aria-label="Close">×</button>
+        </div>
+        <h2>What are you making?</h2>
+        <label
+          >Title<input
+            name="title"
+            required
+            maxlength="200"
+            placeholder="A very useful little thing"
+            autofocus /></label
+        ><label
+          >Type<select name="kind">
+            <option value="html">HTML — websites & interactive tools</option>
+            <option value="react">React — interactive components (TSX)</option>
+            <option value="markdown">Markdown — documents</option>
+            <option value="slides">Slides — Markdown deck, slides split by ---</option>
+            <option value="svg">SVG — graphics</option>
+            <option value="mermaid">Mermaid — diagrams</option>
+            <option value="code">Code — plain source</option>
+          </select></label
+        ><label
+          >Source<textarea
+            name="content"
+            required
+            rows="9"
+            spellcheck="false"
+            placeholder="Paste your source here, or import a file below…"
+          ></textarea>
+        </label>
+        <div class="dialog-bottom">
+          <label class="button file-label"
+            >Import file<input
+              id="import-file"
+              type="file"
+              accept=".html,.htm,.jsx,.tsx,.md,.markdown,.svg,.mmd,.txt,.js,.ts,.py,.json,.css" /></label
+          ><button class="primary" type="submit">Create artifact ↗</button>
+        </div>
+        <p class="form-error" role="alert"></p>
+      </form>
+    </dialog>
+    <dialog id="media-dialog">
+      <div class="dialog-heading">
+        <span class="eyebrow">PICTURES, SOUND &amp; MOTION</span
+        ><button data-close aria-label="Close">×</button>
+      </div>
+      <h2>Bring your artifacts to life.</h2>
+      <p>
+        Upload video, audio, images, captions, or data files (CSV, JSON, text,
+        XLSX, PDF). Copy the embed code into your artifact source; artifacts
+        read data files with <code>window.fs.readFile</code>. Files stay
+        available across every version.
+      </p>
+      <label class="button file-label"
+        >Upload media<input
+          id="media-file"
+          type="file"
+          accept="video/mp4,video/webm,video/ogg,video/quicktime,audio/*,image/png,image/jpeg,image/gif,image/webp,image/avif,.vtt,.csv,.json,.txt,.md,.pdf,.xlsx"
+      /></label>
+      <p id="media-status" role="status">
+        Up to 256 MiB per file. MP4 and WebM work best for video.
+      </p>
+      <div id="media-list" class="media-list"></div>
+    </dialog>
+    <dialog id="share-dialog">
+      <div class="dialog-heading">
+        <span class="eyebrow">SHARE OUTSIDE YOUR NETWORK</span
+        ><button data-close aria-label="Close">×</button>
+      </div>
+      <h2>Read-only links</h2>
+      <p>
+        Anyone with a link can view this artifact and read its data, but not
+        change anything. Revoke a link to end it at once.
+      </p>
+      <p id="share-off" class="fineprint" hidden>
+        Sharing outside your network is off, so this server runs in private
+        mode. To turn it on, set <code>SHARTIFACTS_SHARE_ORIGIN</code> to a
+        hostname of yours and route it to port 8081;
+        <a href="https://github.com/LaneBirmingham/shartifacts/blob/main/docs/sharing.md" target="_blank" rel="noopener">docs/sharing.md</a>
+        has the steps, or ask your agent.
+      </p>
+      <div id="share-list" class="share-list"></div>
+      <div class="dialog-bottom">
+        <button id="share-latest" type="button">Link that follows new versions</button
+        ><button id="share-this" class="primary" type="button">Link to this version</button>
+      </div>
+    </dialog>
+    <dialog id="viewer-dialog">
+      <div class="dialog-heading">
+        <span class="eyebrow">WHO'S HERE</span
+        ><button data-close aria-label="Close">×</button>
+      </div>
+      <h2>Who are you?</h2>
+      <p>
+        Artifacts greet you by name, keep your own data apart from everyone
+        else's, and sign your comments. There are no passwords: anyone on your
+        network can pick any name, so this keeps things tidy, not secret.
+      </p>
+      <div id="people" class="people"></div>
+      <form id="person-form" class="copy-row">
+        <input name="name" required maxlength="60" placeholder="Your name" aria-label="Your name" /><button
+          class="primary"
+          type="submit"
+        >
+          Add me
+        </button>
+      </form>
+      <button id="forget-viewer" class="quiet" type="button">Use this browser without a name</button>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

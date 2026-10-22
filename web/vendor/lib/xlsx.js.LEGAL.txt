@@ -1,0 +1,7 @@
+Bundled license information:
+
+xlsx/xlsx.mjs:
+  /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
+
+xlsx/xlsx.mjs:
+  /*! sheetjs (C) 2013-present SheetJS -- http://sheetjs.com */

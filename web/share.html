@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1b19" media="(prefers-color-scheme: dark)" />
+    <meta name="robots" content="noindex" />
+    <title>Shared artifact</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/view.css" />
+    <link rel="stylesheet" href="/dark.css" />
+    <script src="/theme.js"></script>
+    <script src="/bridge.js" defer></script>
+    <script src="/icons.js" defer></script>
+    <script src="/share.js" defer></script>
+  </head>
+  <body>
+    <header class="view-bar">
+      <span class="view-home" aria-hidden="true">✳</span>
+      <strong id="view-title">Loading…</strong>
+      <span id="view-version"></span>
+      <span class="view-link">Shared read-only</span>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button>
+    </header>
+    <iframe
+      id="preview"
+      sandbox="allow-scripts allow-forms allow-modals allow-downloads allow-popups allow-popups-to-escape-sandbox allow-pointer-lock"
+      allow="fullscreen *; clipboard-write *"
+      title="Shared artifact"
+      referrerpolicy="no-referrer"
+    ></iframe>
+  </body>
+</html>
