@@ -143,7 +143,28 @@ func (s *Server) build() http.Handler {
 	s.authRoutes(mux)
 	mux.HandleFunc("GET /api/media", func(w http.ResponseWriter, r *http.Request) {
 		items, e := s.Store.ListMedia()
-		respond(w, 200, map[string]any{"media": items}, e)
+		if e != nil || r.URL.Query().Get("usage") == "" {
+			respond(w, 200, map[string]any{"media": items}, e)
+			return
+		}
+		// ?usage=1 also says which artifacts and apps name each file: the media dialog's
+		// unused-file finder, which reads every artifact, so only on request.
+		users, e := s.Store.MediaUsage(items)
+		type withUsers struct {
+			store.Media
+			UsedBy []store.MediaUser `json:"used_by"`
+		}
+		out := make([]withUsers, len(items))
+		for i, m := range items {
+			out[i] = withUsers{m, users[m.ID]}
+			if out[i].UsedBy == nil {
+				out[i].UsedBy = []store.MediaUser{}
+			}
+		}
+		respond(w, 200, map[string]any{"media": out}, e)
+	})
+	mux.HandleFunc("DELETE /api/media/{id}", func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, map[string]bool{"deleted": true}, s.Store.DeleteMedia(r.PathValue("id")))
 	})
 	mux.HandleFunc("POST /api/media", s.uploadMedia)
 	mux.HandleFunc("GET /media/{id}", func(w http.ResponseWriter, r *http.Request) { s.serveMedia(w, r, r.PathValue("id")) })

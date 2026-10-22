@@ -3,15 +3,19 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"debug/elf"
 	"debug/macho"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -33,7 +37,7 @@ func (l *Local) Build(ctx context.Context, req BuildRequest) BuildResult {
 	case "go":
 		return l.buildGo(ctx, req, src, out)
 	case "binary":
-		return installBinary(src, req.Binary, filepath.Join(out, "server"))
+		return installBinary(src, req.Binary, filepath.Join(out, "server"), l.previousServer(req))
 	}
 	return BuildResult{Error: "unknown backend kind " + req.Kind}
 }
@@ -76,6 +80,19 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	if _, err := os.Stat(filepath.Join(src, "vendor", "modules.txt")); err == nil {
 		mod = "-mod=vendor"
 	}
+	// Fingerprint the inputs before building: -mod=mod may rewrite go.mod and go.sum.
+	inputs, err := backendInputs(src, pkg, l.goVer, mod)
+	if err != nil {
+		return BuildResult{Error: err.Error()}
+	}
+	if from, ok := l.reuseBuild(req, inputs, out); ok {
+		res.OK = true
+		res.Log = fmt.Sprintf("$ go build %s %s  (%s, %s/%s)\nthe backend is built from the same files as version %d's: reused that build\n", mod, pkg, l.goVer, runtime.GOOS, runtime.GOARCH, from)
+		return res
+	}
+	// out/server may be a hard link another version shares; the build must replace it, not
+	// write through it.
+	os.Remove(filepath.Join(out, "server"))
 	ctx, cancel := context.WithTimeout(ctx, BuildTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, l.goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(out, "server"), pkg)
@@ -94,7 +111,7 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	started := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	res.Log = fmt.Sprintf("$ go build %s %s  (%s, %s/%s)\n%s", mod, pkg, l.goVer, runtime.GOOS, runtime.GOARCH, buf.String())
 	switch {
 	case ctx.Err() == context.DeadlineExceeded:
@@ -104,12 +121,149 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	default:
 		res.OK = true
 		res.Log += fmt.Sprintf("built in %.1fs\n", time.Since(started).Seconds())
+		// The record lists the inputs as deployed and, when -mod=mod filled in go.mod or
+		// go.sum, as built, which is what a later merge deploy copies forward. Without it
+		// the next version only builds again; nothing else depends on it.
+		record := inputs + "\n"
+		if after, err := backendInputs(src, pkg, l.goVer, mod); err == nil && after != inputs {
+			record += after + "\n"
+		}
+		os.WriteFile(filepath.Join(out, buildInputsFile), []byte(record), 0600)
 	}
 	return res
 }
 
-// installBinary checks that a prebuilt backend runs on this system and installs it.
-func installBinary(src, rel, dst string) BuildResult {
+// buildInputsFile records, beside a Go backend's binary, the fingerprint of what it was
+// built from.
+const buildInputsFile = "build-inputs"
+
+// backendInputs fingerprints everything a Go build of pkg in src can read: the module files,
+// vendor/, and every directory holding Go files with all that lies beneath it (go:embed
+// reaches only below its package), along with the package, toolchain, platform and module
+// mode. Builds are reproducible (-trimpath, no cgo), so equal fingerprints make the same
+// binary, and a version whose backend did not change can reuse the build before it.
+func backendInputs(src, pkg, goVersion, mod string) (string, error) {
+	goDirs := map[string]bool{}
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".go") {
+			goDirs[filepath.Dir(path)] = true
+		}
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	input := func(rel, path string) bool {
+		if rel == "go.mod" || rel == "go.sum" || rel == "go.work" || rel == "go.work.sum" || strings.HasPrefix(rel, "vendor/") {
+			return true
+		}
+		for dir := filepath.Dir(path); len(dir) >= len(src); dir = filepath.Dir(dir) {
+			if goDirs[dir] {
+				return true
+			}
+			if dir == src {
+				break
+			}
+		}
+		return false
+	}
+	h := sha256.New()
+	fmt.Fprintf(h, "go build -trimpath -ldflags=-s -w\x00%s\x00%s\x00%s/%s\x00%s\n", goVersion, pkg, runtime.GOOS, runtime.GOARCH, mod)
+	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		rel = filepath.ToSlash(rel)
+		if !input(rel, path) {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		sum := sha256.New()
+		if _, err := io.Copy(sum, f); err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s\x00%x\n", rel, sum.Sum(nil))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// reuseBuild hard-links into out the backend of the newest earlier version built from the
+// same inputs, and reports which version that was. Versions pruned, failed or without a Go
+// backend have no record and are passed over.
+func (l *Local) reuseBuild(req BuildRequest, inputs, out string) (int, bool) {
+	for v := req.Version - 1; v >= 1; v-- {
+		vdir, err := l.versionDir(req.App, v)
+		if err != nil {
+			return 0, false
+		}
+		prev := filepath.Join(vdir, "out")
+		b, err := os.ReadFile(filepath.Join(prev, buildInputsFile))
+		if err != nil || !slices.Contains(strings.Fields(string(b)), inputs) {
+			continue
+		}
+		os.Remove(filepath.Join(out, "server"))
+		if os.Link(filepath.Join(prev, "server"), filepath.Join(out, "server")) != nil {
+			return 0, false
+		}
+		os.WriteFile(filepath.Join(out, buildInputsFile), b, 0600)
+		return v, true
+	}
+	return 0, false
+}
+
+// previousServer is the backend binary of the newest earlier version that kept its files,
+// or "" when there is none.
+func (l *Local) previousServer(req BuildRequest) string {
+	for v := req.Version - 1; v >= 1; v-- {
+		vdir, err := l.versionDir(req.App, v)
+		if err != nil {
+			return ""
+		}
+		if p := filepath.Join(vdir, "out", "server"); fileExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
+func fileExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// sameBytes reports whether two files hold the same bytes.
+func sameBytes(a, b string) bool {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	ib, err := os.Stat(b)
+	if err != nil || ia.Size() != ib.Size() {
+		return false
+	}
+	if os.SameFile(ia, ib) {
+		return true
+	}
+	ba, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	bb, err := os.ReadFile(b)
+	return err == nil && bytes.Equal(ba, bb)
+}
+
+// installBinary checks that a prebuilt backend runs on this system and installs it, sharing
+// previous (the version before's installed backend) when the binary did not change.
+func installBinary(src, rel, dst, previous string) BuildResult {
 	if rel == "" {
 		rel = "server/app"
 	}
@@ -129,6 +283,14 @@ func installBinary(src, rel, dst string) BuildResult {
 	}
 	if !static {
 		res.Warnings = append(res.Warnings, rel+" is dynamically linked and may not start here; build it statically (CGO_ENABLED=0 for Go, a musl target for Rust)")
+	}
+	if previous != "" && sameBytes(path, previous) {
+		os.Remove(dst)
+		if os.Link(previous, dst) == nil {
+			res.OK = true
+			res.Log = fmt.Sprintf("installed prebuilt %s (%s/%s), unchanged from the version before\n", rel, osName, arch)
+			return res
+		}
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return BuildResult{Error: err.Error()}

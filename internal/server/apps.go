@@ -139,6 +139,8 @@ func (s *Server) appView(a store.App, base string, logs bool) map[string]any {
 		"id": a.ID, "name": a.Name, "description": a.Description, "icon": a.Icon, "pinned": a.Pinned, "label": a.Label,
 		"created_at": a.CreatedAt, "updated_at": a.UpdatedAt, "live": a.Live, "latest": len(a.Deployments),
 		"env": env, "shares": shares, "deployments": deps,
+		// Rollback reaches back to oldest_rollback; versions before it lost their files.
+		"keep_versions": s.Store.KeepVersionsOrDefault(), "oldest_rollback": a.OldestRollback(),
 		"hub_url": base + "/apps/" + a.ID,
 	}
 	if s.ShareOrigin != "" && s.AppOrigin != "" {
@@ -156,6 +158,19 @@ func (s *Server) appRoutes(mux *http.ServeMux) {
 	origin := func(r *http.Request) string { return s.clientScheme(r) + "://" + r.Host }
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"apps": s.Store.Apps(), "runtime": s.Runtime.Info(r.Context()), "share_origin": s.ShareOrigin, "app_origin": s.AppOrigin})
+	})
+	mux.HandleFunc("GET /api/apps/{id}/usage", func(w http.ResponseWriter, r *http.Request) {
+		u, err := s.Store.AppUsage(r.PathValue("id"))
+		if err != nil {
+			respond(w, 200, nil, err)
+			return
+		}
+		// The quota is the runner's to enforce, so it reports it.
+		writeJSON(w, 200, struct {
+			store.AppUsage
+			KeepVersions int   `json:"keep_versions"`
+			DataQuota    int64 `json:"data_quota"`
+		}{u, s.Store.KeepVersionsOrDefault(), s.Runtime.Info(r.Context()).DataQuota})
 	})
 	mux.HandleFunc("POST /api/apps", func(w http.ResponseWriter, r *http.Request) {
 		var meta store.AppMeta

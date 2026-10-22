@@ -435,6 +435,29 @@ try {
   await expect
     .poll(() => frame.locator("#picture").evaluate((img) => img.naturalWidth))
     .toBe(1);
+  // The library finds files nothing names and deletes one after asking; the image the
+  // artifact embeds is not offered.
+  const stray = await (
+    await fetch(base + "/api/media?name=stray.csv", { method: "POST", headers: { "Content-Type": "text/csv" }, body: "a,b\n1,2\n" })
+  ).json();
+  await sidebarMenu("＋ Media library");
+  await page.locator("#media-unused").click();
+  await expect(page.locator("#media-unused")).toHaveText("Show all files");
+  await expect(page.locator("#media-list")).toContainText("stray.csv");
+  await expect(page.locator("#media-list")).not.toContainText("pixel.png");
+  let question = "";
+  page.once("dialog", (d) => ((question = d.message()), d.accept()));
+  await page.locator(".media-item", { hasText: "stray.csv" }).getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator("#media-list")).not.toContainText("stray.csv");
+  assert.match(question, /No artifact or app names it/);
+  assert.equal((await api("/api/media")).media.some((m) => m.id === stray.id), false);
+  // Deleting a file in use names who uses it; dismissing keeps it.
+  await page.locator("#media-unused").click();
+  page.once("dialog", (d) => ((question = d.message()), d.dismiss()));
+  await page.locator(".media-item", { hasText: "pixel.png" }).getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => question).toMatch(/used by artifact “Uploaded image”/);
+  assert.equal((await api("/api/media")).media.some((m) => m.id === image.id), true);
+  await page.locator("#media-dialog [data-close]").click();
   // Audio and React use the same persisted media route, including in unsaved drafts.
   const wav = Buffer.alloc(44 + 16000);
   wav.write("RIFF");

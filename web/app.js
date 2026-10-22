@@ -1488,28 +1488,81 @@ function mediaEmbed(item) {
     return `<track kind="captions" src="${item.url}" srclang="en" label="English" default>`;
   return `<img src="${item.url}" alt="">`;
 }
+// mediaUnused shows only the files no artifact or app names, for clearing out.
+let mediaUnused = false;
 async function refreshMedia() {
-  const { media } = await api("/api/media");
+  const { media } = await api(mediaUnused ? "/api/media?usage=1" : "/api/media");
   const list = $("#media-list");
   list.replaceChildren();
+  $("#media-unused").textContent = mediaUnused ? "Show all files" : "Find unused files";
+  $("#media-unused").hidden = !media.length && !mediaUnused;
   if (!media.length) {
     list.textContent = "Your media library is ready for its first file.";
     return;
   }
-  for (const item of media) {
+  const shown = mediaUnused ? media.filter((m) => !m.used_by.length) : media;
+  if (mediaUnused) {
+    const size = shown.reduce((n, m) => n + m.size, 0);
+    list.append(
+      Object.assign(document.createElement("p"), {
+        textContent: shown.length
+          ? `${shown.length} of ${media.length} files (${(size / 1048576).toFixed(1)} MiB) are not named by any artifact, its saved data or an app. A page that lets people pick files as it runs could still use one.`
+          : "Every file is named by an artifact or an app.",
+      }),
+    );
+  }
+  for (const item of shown) {
     const row = document.createElement("div");
     row.className = "media-item";
     const info = document.createElement("span");
     info.textContent = `${item.name ? item.name + " · " : ""}${item.mime_type} · ${(item.size / 1048576).toFixed(2)} MiB`;
     const code = document.createElement("code");
     code.textContent = item.url;
+    const actions = document.createElement("div");
+    actions.className = "media-actions";
     const button = document.createElement("button");
     button.textContent = "Copy embed";
     button.onclick = () => copy(mediaEmbed(item));
-    row.append(info, code, button);
+    const del = document.createElement("button");
+    del.className = "quiet danger";
+    del.textContent = "Delete";
+    del.onclick = () => deleteMedia(item, del);
+    actions.append(button, del);
+    row.append(info, code, actions);
     list.append(row);
   }
 }
+// deleteMedia asks first, naming what still uses the file: deleting cannot be undone, and
+// pages that embed it show it as missing.
+async function deleteMedia(item, button) {
+  const label = item.name || item.id;
+  button.disabled = true;
+  try {
+    const { media } = await api("/api/media?usage=1");
+    const users = media.find((m) => m.id === item.id)?.used_by || [];
+    const names = users.slice(0, 3).map((u) => `${u.kind} “${u.title}”`);
+    if (users.length > 3) names.push(`${users.length - 3} more`);
+    const question = users.length
+      ? `“${label}” is used by ${names.join(", ")}. Delete it anyway? They will show it as missing. This cannot be undone.`
+      : `Delete “${label}”? No artifact or app names it. This cannot be undone.`;
+    if (!confirm(question)) return;
+    await api(`/api/media/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+    toast(`Deleted ${label}`);
+    await refreshMedia();
+  } catch (e) {
+    $("#media-status").textContent = e.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+$("#media-unused").onclick = async () => {
+  mediaUnused = !mediaUnused;
+  try {
+    await refreshMedia();
+  } catch (e) {
+    $("#media-status").textContent = e.message;
+  }
+};
 $("#media").onclick = async () => {
   $("#media-dialog").showModal();
   try {

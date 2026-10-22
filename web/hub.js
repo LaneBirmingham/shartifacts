@@ -24,6 +24,16 @@ const saved = {
     } catch {}
   },
 };
+// bytes writes a size the way people read one: 1.4 GiB.
+const bytes = (n) => {
+  const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return i ? `${n.toFixed(n < 10 ? 1 : 0)} ${units[i]}` : `${n} bytes`;
+};
 const viewerId = () => {
   try {
     return localStorage.getItem("shartifacts.viewer") || "";
@@ -495,6 +505,11 @@ function renderVersions(view, body) {
   actions.append(upload, download);
   body.append(actions);
   if (!d.deployments.length) body.append(node("p", "fineprint", "No versions yet."));
+  else {
+    // Older versions lose their files, so say how far rollback reaches before someone needs it.
+    const reach = d.oldest_rollback ? ` The oldest you can roll back to is v${d.oldest_rollback}.` : "";
+    body.append(node("p", "fineprint", `Files are kept for the newest ${d.keep_versions} versions that built, the live one and versions links pin.${reach}`));
+  }
   const list = node("div", "version-list");
   for (const dep of d.deployments) {
     const card = node("div", "version" + (dep.version === d.live ? " is-live" : ""));
@@ -698,6 +713,21 @@ function renderSettings(view, body) {
     setEnv(view, { [k.value.trim()]: v.value });
   };
   body.append(list, envForm);
+
+  body.append(node("h4", "", "Storage"));
+  const usage = node("p", "fineprint", "Measuring…");
+  body.append(usage);
+  api(`/api/apps/${view.id}/usage`).then(
+    (u) => {
+      const quota = u.data_quota ? ` of its ${bytes(u.data_quota)} quota` : "";
+      usage.replaceChildren(
+        `Backend data: ${bytes(u.data_bytes)} in ${u.data_files} files${quota}.`,
+        node("br"),
+        `Versions: ${u.versions} keep their files, ${bytes(u.versions_bytes)} on disk; files a version did not change are shared with the one before.`,
+      );
+    },
+    (e) => (usage.textContent = e.message),
+  );
 
   body.append(node("h4", "danger", "Danger zone"));
   const del = node("button", "danger", "Delete app, versions & data");

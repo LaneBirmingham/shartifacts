@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
@@ -262,4 +263,194 @@ func (s *Store) AppendMedia(id string, offset int64, data []byte, final bool) (a
 	os.Remove(path)
 	delete(s.uploads, id)
 	return media, nil
+}
+
+// ErrMediaNotFound is a Media library file that is not there.
+var ErrMediaNotFound = notFoundError("media not found")
+
+// DeleteMedia removes a file from the Media library, with its name. Pages that embed it
+// show it as missing from then on; MediaUsage says which those are.
+func (s *Store) DeleteMedia(id string) error {
+	path, _, err := s.MediaPath(id)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return ErrMediaNotFound
+		}
+		return err
+	}
+	names, err := s.mediaNames()
+	if err != nil {
+		return err
+	}
+	if _, ok := names[id]; !ok {
+		return nil
+	}
+	delete(names, id)
+	b, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(s.dir, "media"), s.namesPath(), b)
+}
+
+// A MediaUser is an artifact or app whose source mentions a Media library file.
+type MediaUser struct {
+	Kind  string `json:"kind"` // artifact or app
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// maxScannedAppFile bounds the app source files MediaUsage reads; larger ones are data or
+// bundles of libraries rather than code that names media.
+const maxScannedAppFile = 4 << 20
+
+// appTextFile reports whether an app source file is text that could name media.
+func appTextFile(p string) bool {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".html", ".htm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".css", ".json", ".md", ".txt", ".svg", ".go", ".rs", ".vtt", ".csv":
+		return true
+	}
+	return false
+}
+
+// MediaUsage finds who uses each of media: artifacts whose source or supporting files, in
+// any revision (restoring one would bring the file back into use), or whose saved data (db
+// and storage) mention its ID, or its file name as a quoted string as window.fs.readFile
+// takes it; and apps whose kept versions' text files do. App backends' data and pages that
+// choose files while they run go unseen, so a file nobody uses is one nothing names, not one
+// nothing could load.
+func (s *Store) MediaUsage(media []Media) (map[string][]MediaUser, error) {
+	ids, names := map[string]bool{}, map[string][]string{}
+	for _, m := range media {
+		ids[m.ID] = true
+		if m.Name != "" {
+			names[m.Name] = append(names[m.Name], m.ID)
+		}
+	}
+	out := map[string][]MediaUser{}
+	record := func(u MediaUser) func(string) {
+		return func(id string) {
+			for _, have := range out[id] {
+				if have.Kind == u.Kind && have.ID == u.ID {
+					return
+				}
+			}
+			out[id] = append(out[id], u)
+		}
+	}
+	// Read the library under the lock, and its text without it: revisions never change.
+	type source struct {
+		user      MediaUser
+		revisions []Revision
+	}
+	s.mu.Lock()
+	sources := make([]source, 0, len(s.items))
+	for _, a := range s.items {
+		sources = append(sources, source{MediaUser{"artifact", a.ID, a.Revisions[len(a.Revisions)-1].Title}, a.Revisions})
+	}
+	s.mu.Unlock()
+	for _, src := range sources {
+		found := record(src.user)
+		for _, r := range src.revisions {
+			scanMediaRefs(r.Content, ids, names, found)
+			for _, body := range r.Files {
+				scanMediaRefs(body, ids, names, found)
+			}
+		}
+		// Saved data is replaced whole by rename, so reading it without the lock sees one
+		// version or the next.
+		for _, path := range []string{s.dbPath(src.user.ID), s.storagePath(src.user.ID)} {
+			if b, err := os.ReadFile(path); err == nil {
+				scanMediaRefs(string(b), ids, names, found)
+			}
+		}
+	}
+	seen := map[fileID]bool{}
+	for _, summary := range s.Apps() {
+		a, err := s.App(summary.ID)
+		if err != nil {
+			continue // deleted meanwhile
+		}
+		found := record(MediaUser{"app", a.ID, a.Name})
+		for _, d := range a.Deployments {
+			if d.Pruned {
+				continue
+			}
+			root := s.AppSourceDir(a.ID, d.Version)
+			err := filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+				if err != nil || !e.Type().IsRegular() || !appTextFile(path) {
+					return nil // a version pruned while we read it, or not text
+				}
+				info, err := e.Info()
+				if err != nil || info.Size() > maxScannedAppFile {
+					return nil
+				}
+				if fid, ok := identify(info); ok {
+					if seen[fid] {
+						return nil // the same file, linked into another version
+					}
+					seen[fid] = true
+				}
+				b, err := os.ReadFile(path)
+				if err == nil {
+					scanMediaRefs(string(b), ids, names, found)
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out, nil
+}
+
+// scanMediaRefs calls found for each media ID text mentions (64 hex digits, a dot and an
+// extension, as in /media/ID.png) and for each media file whose name text holds as a
+// quoted string. Every quote is tried as an opening one, as an apostrophe in prose would
+// otherwise pair with the quote before a name: a use found where there is none only keeps
+// a file, while one missed would offer it for deletion.
+func scanMediaRefs(text string, ids map[string]bool, names map[string][]string, found func(id string)) {
+	run := 0
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if c >= '0' && c <= '9' || c >= 'a' && c <= 'f' {
+			run++
+			continue
+		}
+		if c == '.' && run >= 64 {
+			end := i + 1
+			for end < len(text) && end-i <= 4 && (text[end] >= 'a' && text[end] <= 'z' || text[end] >= '0' && text[end] <= '9') {
+				end++
+			}
+			for k := end; k > i+1; k-- {
+				if id := text[i-64 : k]; ids[id] {
+					found(id)
+					break
+				}
+			}
+		}
+		run = 0
+	}
+	if len(names) == 0 {
+		return
+	}
+	for i := 0; i < len(text); i++ {
+		q := text[i]
+		if q != '"' && q != '\'' && q != '`' {
+			continue
+		}
+		end := strings.IndexByte(text[i+1:min(len(text), i+2+255)], q)
+		if end < 0 {
+			continue
+		}
+		for _, id := range names[text[i+1:i+1+end]] {
+			found(id)
+		}
+	}
 }

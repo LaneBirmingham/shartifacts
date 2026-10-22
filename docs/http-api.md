@@ -36,6 +36,8 @@ curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
 | `POST /api/complete` | `{prompt}` or `{messages}` | `window.claude.complete`; `503` unless `ANTHROPIC_API_KEY` is set |
 | `POST /api/media?name=FILE` | raw bytes | Upload media or a data file, keeping its name |
 | `POST /api/media/{grant}?name=FILE` | raw bytes | The same, with the signed upload URL that MCP hands an agent's shell when sign-in is on (valid for an hour, and only while the token or session it was made for exists) |
+| `GET /api/media?usage=1` | | The media library; `usage` adds `used_by` to each file: the artifacts (source in any revision, or saved data) and apps (kept versions) that name it |
+| `DELETE /api/media/{id}` | | Delete a file from the media library (`404` if there is none). Pages that embed it show it as missing |
 | `GET /api/auth` | | `{enabled, signed_in, via}`: whether sign-in is on, and whether this request is signed in by `session` or `token`. Open to all |
 | `POST /api/auth/login`, `POST /api/auth/logout` | `{password}`; `{everywhere}` | Sign a browser in (sets the session cookie; `403` `wrong_password`, `429` `rate_limited` with `Retry-After` after 10 tries in 15 minutes, `503` `busy` while too many checks run) or out (`everywhere` ends every session) |
 | `PUT /api/auth/password`, `DELETE /api/auth/password` | `{current, password, revoke_tokens}`; `{current}` | Set or change the owner password, or turn sign-in off. The first password needs no `current`, and gets `409` if one was set meanwhile. `revoke_tokens` also revokes every agent token |
@@ -56,6 +58,7 @@ curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
 | `GET /api/apps/{id}/deployments/{n}/files[/{path}]`, `GET /api/apps/{id}/download?version=` | | A version's file list, one file, or its source as a zip |
 | `PUT /api/apps/{id}/live` | `{version}` | Promote or roll back |
 | `GET /api/apps/{id}/logs?version=&tail=`, `POST /api/apps/{id}/restart` | | Logs; stop the backends (the next request starts them) |
+| `GET /api/apps/{id}/usage` | | Disk use: `versions` that keep files and their `versions_bytes` (shared files counted once), `data_bytes` and `data_files` of the backend data, `keep_versions`, and `data_quota` (0: none) |
 | `PUT /api/apps/{id}/env` | `{vars: {NAME: "value" or null}}` | Backend variables and secrets |
 | `POST /api/apps/{id}/shares`, `DELETE /api/app-shares/{token}` | `{version, read_only}` (0 follows live) | Public app links |
 | `GET /api/apps/guide` | | The build contract as text |

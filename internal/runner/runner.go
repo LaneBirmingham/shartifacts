@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -50,6 +51,8 @@ type Info struct {
 	Sandbox sandbox.Status `json:"sandbox"`
 	// Remote is true when a runner sidecar runs backends.
 	Remote bool `json:"remote"`
+	// DataQuota is the most disk an app's DATA_DIR may take, in bytes; 0 is no limit.
+	DataQuota int64 `json:"data_quota,omitempty"`
 	// Error is why the runtime cannot be reached, when it cannot.
 	Error string `json:"error,omitempty"`
 }
@@ -85,6 +88,8 @@ type Logs struct {
 	// Exit describes how the last process ended.
 	Exit  string    `json:"exit,omitempty"`
 	Lines []LogLine `json:"lines"`
+
+	ended time.Time
 }
 
 type LogLine struct {
@@ -126,13 +131,19 @@ type Local struct {
 	Idle time.Duration
 	// Remote marks the runner sidecar, for Info.
 	Remote bool
+	// DataQuota bounds an app's DATA_DIR in bytes (0: no limit). A backend whose data
+	// outgrows it is stopped and not started again until the data shrinks or the quota grows.
+	DataQuota int64
 
 	once  sync.Once
 	mu    sync.Mutex
 	procs map[key]*proc
-	// logs keep the output of processes that ended, until the version starts again.
+	// logs keep the output of processes that ended, for a day and only for the latest
+	// keptLogs versions, until the version starts again.
 	logs     map[key]*Logs
 	failures map[key][]time.Time
+	// dataSize caches what each app's DATA_DIR measured, when DataQuota is set.
+	dataSize map[string]measured
 	goVer    string
 	goPath   string
 	stop     chan struct{}
@@ -146,6 +157,20 @@ type key struct {
 	app     string
 	version int
 }
+
+type measured struct {
+	bytes int64
+	at    time.Time
+}
+
+const (
+	// keptLogs and keepLogsFor bound the output kept from processes that ended: up to a
+	// thousand lines each, which across every version ever started would only grow.
+	keptLogs    = 32
+	keepLogsFor = 24 * time.Hour
+	// measureEvery is how often a running app's data is measured against DataQuota.
+	measureEvery = 2 * time.Minute
+)
 
 type proc struct {
 	key      key
@@ -165,6 +190,7 @@ type proc struct {
 func (l *Local) init() {
 	l.once.Do(func() {
 		l.procs, l.logs, l.failures, l.stop = map[key]*proc{}, map[key]*Logs{}, map[key][]time.Time{}, make(chan struct{})
+		l.dataSize = map[string]measured{}
 		if l.MaxProcs <= 0 {
 			l.MaxProcs = 16
 		}
@@ -198,7 +224,7 @@ func (l *Local) init() {
 
 func (l *Local) Info(ctx context.Context) Info {
 	l.init()
-	return Info{OS: runtime.GOOS, Arch: runtime.GOARCH, Go: l.goVer, Sandbox: l.sandbox, Remote: l.Remote}
+	return Info{OS: runtime.GOOS, Arch: runtime.GOARCH, Go: l.goVer, Sandbox: l.sandbox, Remote: l.Remote, DataQuota: l.DataQuota}
 }
 
 func (l *Local) appDir(app string) (string, error) {
@@ -275,6 +301,9 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func (l *Local) ensure(app string, version int) (*proc, error) {
 	l.init()
 	k := key{app, version}
+	if err := l.checkQuota(k); err != nil {
+		return nil, err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if p, ok := l.procs[k]; ok {
@@ -346,6 +375,9 @@ func (l *Local) spawn(k key) (*proc, error) {
 		"PORT=" + strconv.Itoa(port), "APP_ID=" + k.app, "APP_VERSION=" + strconv.Itoa(k.version)}
 	if tz := os.Getenv("TZ"); tz != "" {
 		env = append(env, "TZ="+tz)
+	}
+	if l.DataQuota > 0 {
+		env = append(env, "DATA_QUOTA="+strconv.FormatInt(l.DataQuota, 10))
 	}
 	names := make([]string, 0, len(meta.Env))
 	for name := range meta.Env {
@@ -445,7 +477,7 @@ func (l *Local) watch(p *proc) {
 			l.failures[p.key] = append(l.failures[p.key], time.Now())
 		}
 	}
-	l.logs[p.key] = &Logs{State: "stopped", Exit: p.exit, Requests: p.requests, Lines: p.ring.lines()}
+	l.logs[p.key] = &Logs{State: "stopped", Exit: p.exit, Requests: p.requests, Lines: p.ring.lines(), ended: time.Now()}
 }
 
 // kill stops p: SIGTERM, then SIGKILL after five seconds. l.mu is held.
@@ -488,9 +520,131 @@ func (l *Local) reap() {
 					l.kill(p, fmt.Sprintf("idle for %s", l.Idle))
 				}
 			}
+			l.forget(time.Now())
+			l.mu.Unlock()
+			l.enforceQuota()
+		}
+	}
+}
+
+// forget drops what ended processes left behind: output a day old, or beyond the latest
+// keptLogs versions, and crash times too old to hold a backend back. l.mu is held.
+func (l *Local) forget(now time.Time) {
+	var ended []key
+	for k, lg := range l.logs {
+		if _, running := l.procs[k]; running || now.Sub(lg.ended) > keepLogsFor {
+			delete(l.logs, k)
+			continue
+		}
+		ended = append(ended, k)
+	}
+	if len(ended) > keptLogs {
+		sort.Slice(ended, func(i, j int) bool { return l.logs[ended[i]].ended.After(l.logs[ended[j]].ended) })
+		for _, k := range ended[keptLogs:] {
+			delete(l.logs, k)
+		}
+	}
+	for k, times := range l.failures {
+		if len(times) == 0 || now.Sub(times[len(times)-1]) > time.Minute {
+			delete(l.failures, k)
+		}
+	}
+	for app, m := range l.dataSize {
+		if now.Sub(m.at) > keepLogsFor {
+			delete(l.dataSize, app)
+		}
+	}
+}
+
+// checkQuota refuses to start a backend whose app's data outgrew DataQuota. A running
+// backend passes without a measurement, so requests do not walk the disk.
+func (l *Local) checkQuota(k key) error {
+	if l.DataQuota <= 0 {
+		return nil
+	}
+	l.mu.Lock()
+	_, running := l.procs[k]
+	m, ok := l.dataSize[k.app]
+	l.mu.Unlock()
+	if running {
+		return nil
+	}
+	// A backend the quota stopped would otherwise stay down until the next measurement,
+	// however quickly its data shrank, so starts measure unless one just did.
+	if !ok || time.Since(m.at) > 5*time.Second {
+		m = l.measure(k.app)
+	}
+	if m.bytes > l.DataQuota {
+		return fmt.Errorf("the app's data takes %s, over its %s quota (SHARTIFACTS_APP_DATA_QUOTA); free some of it or raise the quota", sizeText(m.bytes), sizeText(l.DataQuota))
+	}
+	return nil
+}
+
+// enforceQuota measures the data of running apps every measureEvery and stops the
+// backends of any over DataQuota.
+func (l *Local) enforceQuota() {
+	if l.DataQuota <= 0 {
+		return
+	}
+	apps := map[string]bool{}
+	l.mu.Lock()
+	for k := range l.procs {
+		if time.Since(l.dataSize[k.app].at) >= measureEvery {
+			apps[k.app] = true
+		}
+	}
+	l.mu.Unlock()
+	for app := range apps {
+		if m := l.measure(app); m.bytes > l.DataQuota {
+			l.mu.Lock()
+			for k, p := range l.procs {
+				if k.app == app {
+					l.kill(p, fmt.Sprintf("stopped: the app's data takes %s, over its %s quota", sizeText(m.bytes), sizeText(l.DataQuota)))
+				}
+			}
 			l.mu.Unlock()
 		}
 	}
+}
+
+// measure totals an app's DATA_DIR, outside l.mu, and caches the figure.
+func (l *Local) measure(app string) measured {
+	m := measured{at: time.Now()}
+	if dir, err := l.appDir(app); err == nil {
+		m.bytes = dirSize(filepath.Join(dir, "data"))
+	}
+	l.mu.Lock()
+	l.dataSize[app] = m
+	l.mu.Unlock()
+	return m
+}
+
+// dirSize totals the regular files under dir; what cannot be read counts as nothing.
+func dirSize(dir string) int64 {
+	var total int64
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if info, err := d.Info(); err == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total
+}
+
+// sizeText writes a byte count the way people read one: 1.5 GiB.
+func sizeText(n int64) string {
+	units := []string{"bytes", "KiB", "MiB", "GiB", "TiB"}
+	f, u := float64(n), 0
+	for f >= 1024 && u < len(units)-1 {
+		f /= 1024
+		u++
+	}
+	if u == 0 {
+		return fmt.Sprintf("%d bytes", n)
+	}
+	return strings.TrimSuffix(fmt.Sprintf("%.1f", f), ".0") + " " + units[u]
 }
 
 func (l *Local) Stop(ctx context.Context, app string, version int) error {

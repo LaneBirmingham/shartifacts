@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +57,10 @@ type Config struct {
 	GoBinary     string
 	AppProcs     int
 	AppIdle      time.Duration
+	// AppKeepVersions is how many of each app's newest built versions keep their files.
+	AppKeepVersions int
+	// AppDataQuota bounds each app's DATA_DIR, in bytes; 0 is no limit.
+	AppDataQuota ByteSize
 }
 
 // EnvName is the environment variable that sets a flag.
@@ -89,6 +94,8 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.StringVar(&c.GoBinary, "go", "go", "Go toolchain that builds Go app backends")
 	fs.IntVar(&c.AppProcs, "app-procs", 16, "most app backends running at once; the least recently used stops to make room")
 	fs.DurationVar(&c.AppIdle, "app-idle", 15*time.Minute, "stop an app backend after this long without requests")
+	fs.IntVar(&c.AppKeepVersions, "app-keep-versions", 20, "how many of each app's newest built versions keep their files, and so can be rolled back to; the live version and versions links pin are kept as well")
+	fs.Var(&c.AppDataQuota, "app-data-quota", "with the runner: the most disk each app's backend data may take, e.g. 2GiB or 500MB; a backend over it is stopped until its data shrinks. Empty or 0 is no limit")
 	fs.Usage = func() {
 		fmt.Fprintf(out, "Usage: shartifacts [flags]\n       shartifacts auth COMMAND   (sign-in: shartifacts auth help)\n\nEvery flag can also be set with an environment variable: -share-origin is %s.\nA flag on the command line wins over the environment.\n\n", EnvName("share-origin"))
 		fs.PrintDefaults()
@@ -181,6 +188,9 @@ func originHost(o string) string {
 
 func (c *Config) check() error {
 	var err error
+	if c.AppKeepVersions < 1 {
+		return fmt.Errorf("-app-keep-versions %d must be at least 1: the live version always keeps its files, and rollback needs the ones before it", c.AppKeepVersions)
+	}
 	if strings.EqualFold(c.ShareListen, "off") {
 		c.ShareListen = ""
 	}
@@ -227,6 +237,49 @@ func (c *Config) check() error {
 			return fmt.Errorf("%s is one of the app hostnames -app-origin %s covers, so it would serve only app links; give apps a wildcard of their own, e.g. https://*.%s", h, c.AppOrigin, share)
 		}
 	}
+	return nil
+}
+
+// ByteSize is a flag holding a size in bytes, written as 500MB, 2GiB or a plain number of
+// bytes. K, M, G and T alone, and with iB, are powers of 1024; with B, powers of 1000.
+type ByteSize int64
+
+func (b *ByteSize) String() string {
+	if b == nil || *b == 0 {
+		return ""
+	}
+	n := int64(*b)
+	for _, u := range []string{"TiB", "GiB", "MiB", "KiB"} {
+		if size := sizeUnits[strings.ToLower(u)]; n%size == 0 {
+			return fmt.Sprintf("%d%s", n/size, u)
+		}
+	}
+	return fmt.Sprint(n)
+}
+
+var sizeUnits = map[string]int64{
+	"": 1, "b": 1,
+	"k": 1 << 10, "kib": 1 << 10, "kb": 1e3,
+	"m": 1 << 20, "mib": 1 << 20, "mb": 1e6,
+	"g": 1 << 30, "gib": 1 << 30, "gb": 1e9,
+	"t": 1 << 40, "tib": 1 << 40, "tb": 1e12,
+}
+
+func (b *ByteSize) Set(v string) error {
+	v = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(v), " ", ""))
+	i := strings.IndexFunc(v, func(r rune) bool { return (r < '0' || r > '9') && r != '.' })
+	if i < 0 {
+		i = len(v)
+	}
+	unit, ok := sizeUnits[v[i:]]
+	n, err := strconv.ParseFloat(v[:i], 64)
+	if !ok || err != nil || n < 0 {
+		return fmt.Errorf("%q is not a size like 500MB or 2GiB", v)
+	}
+	if n*float64(unit) >= 1<<62 {
+		return fmt.Errorf("%q is too large", v)
+	}
+	*b = ByteSize(n * float64(unit))
 	return nil
 }
 

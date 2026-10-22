@@ -135,6 +135,7 @@ try {
   const panel = page.locator(`#panel-${id}`);
   await panel.getByRole("button", { name: "Versions" }).click();
   await expect(panel.locator(".version.is-live")).toContainText("v2");
+  await expect(panel.locator(".drawer-body")).toContainText("Files are kept for the newest 20 versions that built, the live one and versions links pin. The oldest you can roll back to is v1.");
   await panel.locator(".version", { hasText: "v1" }).getByRole("button", { name: "Roll back to this" }).click();
   await expect(frame.getByRole("heading", { name: /^Notes/ })).toBeVisible();
   await expect(frame.getByText("Buy milk")).toBeVisible(); // data is shared by versions
@@ -151,6 +152,8 @@ try {
   await panel.getByRole("button", { name: /^Logs/ }).click();
   await expect(panel.locator(".console").first()).toContainText("notes listening");
   await page.screenshot({ path: "test-results/apps-logs.png" });
+  // The backend did not change since version 1, so neither version rebuilt it.
+  assert.match((await tool("get_app", { id, logs: true, version: 3 })).logs.build_log, /reused that build/);
   const withLogs = await tool("get_app", { id, logs: true, files: ["src/App.tsx"] });
   assert.equal(withLogs.logs.backend.state, "running");
   assert.match(withLogs.contents["src/App.tsx"], /Hello notes/);
@@ -161,6 +164,9 @@ try {
   await panel.getByLabel("Value").fill("s3cret");
   await panel.getByRole("button", { name: "Set", exact: true }).click();
   await expect(panel.locator(".env-row")).toContainText("API_TOKEN");
+  // Storage: the disk the versions and the backend's data take.
+  await expect(panel.getByText(/^Backend data: .+ in \d+ files\./)).toBeVisible();
+  await expect(panel.getByText(/Versions: 3 keep their files/)).toBeVisible();
   const got = await tool("get_app", { id });
   assert.deepEqual(got.env, ["API_TOKEN"]);
   assert.ok(!JSON.stringify(got).includes("s3cret"));
@@ -260,6 +266,8 @@ try {
   // The artifacts workspace lives on at /artifacts, a click away.
   await page.getByRole("link", { name: "Artifacts", exact: true }).click();
   await expect(page.getByRole("heading", { name: "A home for things you make." })).toBeVisible();
+  // Apps sits in the menu at the foot of the sidebar.
+  await page.locator("#toggle-sidebar-menu").click();
   await page.locator("#to-apps").click();
   await expect(page.getByRole("heading", { name: "Apps that run." })).toBeVisible();
 
