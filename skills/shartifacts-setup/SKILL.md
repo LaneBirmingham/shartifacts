@@ -138,7 +138,7 @@ If sign-in is already on (an upgrade, or data from an earlier install), the API 
 
 ## 7. Sign-in and agents
 
-**Sign-in, if planned.** Ask the person to open the workspace, choose **Set a password** (the lock in the top bar, or **Sign-in** in the sidebar), and save the password in their password manager. Then check:
+**Sign-in, if planned.** Ask the person to open the workspace, choose **Set a password** (the lock in the top bar, or **Sign-in** in the menu at the foot of the sidebar), and save the password in their password manager. Then check:
 
 ```sh
 docker compose exec shartifacts shartifacts auth status          # "Sign-in is on"

@@ -164,9 +164,69 @@ button kbd {
   font-size: 12px;
   letter-spacing: 1.5px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
   color: var(--muted);
+  margin-bottom: 10px;
+}
+#count {
+  margin-left: 6px;
+}
+#toggle-filters {
+  min-height: 0;
+  padding: 3px 10px;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+}
+#toggle-filters[aria-expanded="true"] {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+#filter-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+.filters {
   margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.filters .tag-chips {
+  max-height: 96px;
+  overflow-y: auto;
+  margin: 0;
+}
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.active-filters button {
+  min-height: 0;
+  padding: 3px 9px;
+  font-size: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--canvas);
+}
+.active-filters .clear-filters {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  text-decoration: underline;
 }
 .search kbd {
   border: 1px solid var(--hairline);
@@ -220,7 +280,7 @@ button kbd {
 .library-filters {
   display: flex;
   gap: 4px;
-  margin: -4px 0 10px;
+  margin: 0 0 8px;
 }
 .library-filters select {
   flex: 1;
@@ -233,6 +293,7 @@ button kbd {
 }
 #library {
   flex: 1;
+  min-height: 120px;
   overflow: auto;
   margin: 0 -10px;
   padding: 0 10px;
@@ -304,38 +365,71 @@ button kbd {
   padding: 12px 2px;
 }
 footer {
-  padding: 18px 0;
+  position: relative;
+  flex-shrink: 0;
+  padding: 10px 0;
   border-top: 1px solid var(--hairline);
-  margin-top: 20px;
+  margin-top: 12px;
 }
-footer button {
-  background: transparent;
-  width: 100%;
-  border: 0;
-  padding: 8px 0;
-  justify-content: flex-start;
-}
-footer button span,
-footer .footer-link span {
-  margin-left: auto;
-}
-footer .footer-link {
-  background: transparent;
-  width: 100%;
-  border: 0;
-  padding: 8px 0;
-  justify-content: flex-start;
-}
-footer p {
-  color: var(--muted);
-  font-size: 13px;
-  margin: 10px 0 0;
-}
-footer .footer-note {
+.footer-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+#toggle-sidebar-menu {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 6px;
+  margin-left: -6px;
+  border: 0;
+  background: transparent;
+  color: var(--body);
+  font-size: 13px;
+}
+#toggle-sidebar-menu[aria-expanded="true"],
+#toggle-sidebar-menu:hover {
+  background: var(--surface-cream-strong);
+}
+/* Opens upward from the foot, over the library, so it never pushes the list around. */
+.sidebar-menu {
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  bottom: calc(100% - 4px);
+  z-index: 3;
+  padding: 6px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgb(20 20 19 / 18%);
+}
+.sidebar-menu button,
+.sidebar-menu .button {
+  background: transparent;
+  width: 100%;
+  border: 0;
+  padding: 9px 10px;
+  justify-content: flex-start;
+}
+.sidebar-menu button:hover,
+.sidebar-menu .button:hover {
+  background: var(--surface-cream-strong);
+}
+.sidebar-menu .button span {
+  margin-left: auto;
+}
+.sidebar-menu .footer-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--hairline);
 }
 i {
   display: inline-block;

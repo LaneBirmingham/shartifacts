@@ -49,52 +49,72 @@
       <p id="did-you-mean" class="did-you-mean" hidden>
         Did you mean <button id="suggestion" type="button"></button>?
       </p>
-      <div id="tag-chips" class="tag-chips" role="group" aria-label="Filter by tag" hidden></div>
       <div class="library-heading">
-        <span id="library-label">THE LIBRARY</span><span id="count">0</span>
+        <span><span id="library-label">THE LIBRARY</span> <span id="count">0</span></span
+        ><button
+          id="toggle-filters"
+          type="button"
+          aria-expanded="false"
+          aria-controls="filters"
+        >Filters<span id="filter-count" hidden></span></button>
       </div>
-      <div class="library-filters">
-        <select id="filter" aria-label="Filter by type">
-          <option value="">All types</option>
-          <option>html</option>
-          <option>react</option>
-          <option>markdown</option>
-          <option>slides</option>
-          <option>svg</option>
-          <option>mermaid</option>
-          <option>code</option>
-        </select>
-        <select id="when" aria-label="Filter by when it changed">
-          <option value="">Any time</option>
-          <option value="today">Today</option>
-          <option value="week">Past week</option>
-          <option value="month">Past month</option>
-          <option value="year">Past year</option>
-        </select>
-        <select id="has" aria-label="Filter by what it contains">
-          <option value="">Contains…</option>
-          <option value="comments">Comments</option>
-          <option value="open">Open threads</option>
-          <option value="video">Video</option>
-          <option value="audio">Audio</option>
-          <option value="image">Images</option>
-          <option value="chart">Charts</option>
-          <option value="diagram">Diagrams</option>
-          <option value="table">Tables</option>
-          <option value="form">Forms</option>
-          <option value="math">Math</option>
-          <option value="3d">3D</option>
-          <option value="data">Data</option>
-          <option value="files">Several files</option>
-        </select>
+      <div id="filters" class="filters" hidden>
+        <div class="library-filters">
+          <select id="filter" aria-label="Filter by type">
+            <option value="">All types</option>
+            <option>html</option>
+            <option>react</option>
+            <option>markdown</option>
+            <option>slides</option>
+            <option>svg</option>
+            <option>mermaid</option>
+            <option>code</option>
+          </select>
+          <select id="when" aria-label="Filter by when it changed">
+            <option value="">Any time</option>
+            <option value="today">Today</option>
+            <option value="week">Past week</option>
+            <option value="month">Past month</option>
+            <option value="year">Past year</option>
+          </select>
+          <select id="has" aria-label="Filter by what it contains">
+            <option value="">Contains…</option>
+            <option value="comments">Comments</option>
+            <option value="open">Open threads</option>
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+            <option value="image">Images</option>
+            <option value="chart">Charts</option>
+            <option value="diagram">Diagrams</option>
+            <option value="table">Tables</option>
+            <option value="form">Forms</option>
+            <option value="math">Math</option>
+            <option value="3d">3D</option>
+            <option value="data">Data</option>
+            <option value="files">Several files</option>
+          </select>
+        </div>
+        <div id="tag-chips" class="tag-chips" role="group" aria-label="Filter by tag" hidden></div>
       </div>
+      <div id="active-filters" class="active-filters" role="group" aria-label="Active filters" hidden></div>
       <nav id="library" aria-label="Artifact library"></nav>
       <footer>
-        <a class="button footer-link" href="/" id="to-apps">▦ Apps <span>↗</span></a>
-        <button id="media">＋ Media library</button>
-        <button id="connect" data-connect>⌁ Connect an agent</button>
-        <button id="signin" data-signin>⚿ Sign-in</button>
-        <p class="footer-note"><span><i></i> Local network · yours to keep</span><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button></p>
+        <div id="sidebar-menu" class="sidebar-menu" hidden>
+          <a class="button" href="/" id="to-apps">▦ Apps <span>↗</span></a>
+          <button id="media">＋ Media library</button>
+          <button id="connect" data-connect>⌁ Connect an agent</button>
+          <button id="signin" data-signin>⚿ Sign-in</button>
+          <p class="footer-note"><i></i> Local network · yours to keep</p>
+        </div>
+        <div class="footer-bar">
+          <button
+            id="toggle-sidebar-menu"
+            type="button"
+            aria-expanded="false"
+            aria-controls="sidebar-menu"
+          ><span aria-hidden="true">⋯</span> Apps, media &amp; agents</button
+          ><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button>
+        </div>
       </footer>
     </aside>
     <main class="workspace">

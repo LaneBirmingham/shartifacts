@@ -265,6 +265,51 @@ function tagChips() {
     }),
   );
   chips.hidden = !top.length;
+  activeFilters();
+}
+// The filters fold away so the library keeps the room; what is filtering it stays in view as
+// chips that remove themselves, and the Filters button counts them.
+const filterMenus = ["#filter", "#when", "#has"];
+function filtersOpen(open) {
+  $("#filters").hidden = !open;
+  $("#toggle-filters").setAttribute("aria-expanded", String(open));
+  localStorage.setItem("shartifacts.filters", open ? "open" : "closed");
+  activeFilters();
+}
+function activeFilters() {
+  const chips = [];
+  const chip = (label, remove) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${label} ×`;
+    b.setAttribute("aria-label", `Remove filter ${label}`);
+    b.onclick = () => {
+      remove();
+      list();
+    };
+    chips.push(b);
+  };
+  for (const t of searchTags) chip(`#${t}`, () => searchTags.delete(t));
+  for (const el of filterMenus.map($))
+    if (el.value) chip(el.selectedOptions[0].textContent, () => (el.value = ""));
+  const count = $("#filter-count");
+  count.textContent = chips.length;
+  count.hidden = !chips.length;
+  const row = $("#active-filters");
+  if (chips.length > 1) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "clear-filters";
+    clear.textContent = "Clear all";
+    clear.onclick = () => {
+      searchTags.clear();
+      for (const el of filterMenus.map($)) el.value = "";
+      list();
+    };
+    chips.push(clear);
+  }
+  row.replaceChildren(...chips);
+  row.hidden = !chips.length || !$("#filters").hidden;
 }
 // Filter the library to one tag, from a tag shown anywhere else.
 function findTag(tag) {
@@ -1133,7 +1178,30 @@ document
   .querySelectorAll("[data-close]")
   .forEach((b) => (b.onclick = () => b.closest("dialog").close()));
 $("#search").oninput = list;
-for (const el of ["#filter", "#when", "#has"]) $(el).onchange = list;
+for (const el of filterMenus) $(el).onchange = list;
+$("#toggle-filters").onclick = () => filtersOpen($("#filters").hidden);
+filtersOpen(localStorage.getItem("shartifacts.filters") === "open");
+// The sidebar's less frequent destinations share one menu at its foot, so the library keeps
+// the height. It closes on a choice, a click elsewhere or Escape.
+function sidebarMenuOpen(open, { focus = false } = {}) {
+  $("#sidebar-menu").hidden = !open;
+  $("#toggle-sidebar-menu").setAttribute("aria-expanded", String(open));
+  if (open && focus) $("#sidebar-menu").querySelector("a,button").focus();
+}
+$("#toggle-sidebar-menu").onclick = (e) =>
+  sidebarMenuOpen($("#sidebar-menu").hidden, { focus: e.detail === 0 });
+$("#sidebar-menu").addEventListener("click", (e) => {
+  if (e.target.closest("a,button")) sidebarMenuOpen(false);
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#sidebar-menu, #toggle-sidebar-menu")) sidebarMenuOpen(false);
+});
+$("#sidebar").addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || $("#sidebar-menu").hidden) return;
+  e.stopPropagation();
+  sidebarMenuOpen(false);
+  $("#toggle-sidebar-menu").focus();
+});
 $("#suggestion").onclick = () => {
   $("#search").value = $("#suggestion").textContent;
   list();

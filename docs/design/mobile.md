@@ -1,8 +1,8 @@
 # Mobile workspace and fullscreen
 
 At widths up to 900 CSS pixels, **Library** opens a drawer with search,
-tag chips, type, time and contents filters, creation, media, and agent connection
-controls. Close it with **Close library**, the backdrop, or Escape (Escape in a
+the folding **Filters** (tag chips, type, time and contents), creation, and the
+menu for apps, media, agent connection and sign-in. Close it with **Close library**, the backdrop, or Escape (Escape in a
 search box with text clears it first). Selecting an artifact closes it; a tag
 under **Details** opens it, filtered to that tag.
 The drawer keeps keyboard focus inside and restores focus when closed.

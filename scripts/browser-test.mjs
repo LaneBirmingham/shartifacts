@@ -73,6 +73,13 @@ async function details() {
   if ((await page.locator("#toggle-details").getAttribute("aria-expanded")) !== "true")
     await page.locator("#toggle-details").click();
 }
+// Media, agents and sign-in live in the menu at the foot of the sidebar.
+async function sidebarMenu(name) {
+  if ((await page.locator("#toggle-sidebar-menu").getAttribute("aria-expanded")) !== "true")
+    await page.locator("#toggle-sidebar-menu").click();
+  await page.locator("#sidebar-menu").getByRole("button", { name }).click();
+  await expect(page.locator("#sidebar-menu")).toBeHidden();
+}
 async function immersive(native = true) {
   const view = await page.locator("#panes").getAttribute("data-view");
   const source = await page.locator("#preview").getAttribute("src");
@@ -402,7 +409,7 @@ try {
     fullPage: true,
   });
   // The browser uploader accepts a real image and exposes reusable embed markup.
-  await page.locator("#media").click();
+  await sidebarMenu("＋ Media library");
   await page.locator("#media-file").setInputFiles({
     name: "pixel.png",
     mimeType: "image/png",
@@ -697,8 +704,12 @@ try {
   await page.locator("#suggestion").click();
   await expect(search).toHaveValue("groceries");
   await search.fill("");
+  // Tags and filter menus stay folded away until asked for, so the library keeps the room.
+  await expect(page.locator("#filters")).toBeHidden();
+  await page.locator("#toggle-filters").click();
   await page.locator("#tag-chips button", { hasText: "#finance" }).click();
   await expect(page.locator("#library-label")).toHaveText("RESULTS");
+  await expect(page.locator("#filter-count")).toHaveText("1");
   await expect(page.locator("#library .library-item")).toHaveCount(2);
   await page.locator("#has").selectOption("table");
   await expect(page.locator("#library .library-item")).toHaveCount(1);
@@ -706,6 +717,9 @@ try {
   await page.locator("#has").selectOption("");
   await page.locator("#tag-chips button", { hasText: "#finance" }).click();
   await expect(page.locator("#library-label")).toHaveText("THE LIBRARY");
+  await expect(page.locator("#filter-count")).toBeHidden();
+  await page.locator("#toggle-filters").click();
+  await expect(page.locator("#filters")).toBeHidden();
   await page.evaluate(() => document.activeElement.blur());
   await page.keyboard.press("/");
   await expect(search).toBeFocused();
@@ -726,7 +740,14 @@ try {
   await expect(page.locator("#artifact-tags button")).toHaveText(["#finance", `#${added}`]);
   await page.locator("#artifact-tags button").first().click();
   await expect(page.locator("#library .library-item")).toHaveCount(2);
-  await page.locator("#tag-chips button", { hasText: "#finance" }).click();
+  // With the filters folded away, what filters the library shows as chips that remove it.
+  await page.locator("#active-filters").getByRole("button", { name: "Remove filter #finance" }).click();
+  await expect(page.locator("#active-filters")).toBeHidden();
+  await expect(page.locator("#library-label")).toHaveText("THE LIBRARY");
+  // On a short tablet screen the library still starts right under the search.
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await expect(page.locator("#library .library-item").first()).toBeInViewport();
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(copyURL);
   for (const size of [
     { width: 390, height: 844 },
@@ -760,7 +781,7 @@ try {
       .click();
   }
   await page.locator("#toggle-library").click();
-  await page.locator("#media").click();
+  await sidebarMenu("＋ Media library");
   await expect(page.locator("#media-list")).toContainText("video/webm");
   assert.equal(
     await page.evaluate(
@@ -783,7 +804,7 @@ try {
     page.getByRole("heading", { name: "A home for things you make." }),
   ).toBeVisible();
   await page.locator("#toggle-library").click();
-  await page.getByRole("button", { name: "⌁ Connect an agent" }).click();
+  await sidebarMenu("⌁ Connect an agent");
   await expect(page.locator("#connect-dialog input[readonly]")).toHaveValue(base + "/mcp");
   await expect(page.locator("#connect-dialog")).toContainText(`claude mcp add --transport http --scope user shartifacts ${base}/mcp`);
   await page.locator("#connect-dialog [data-close]").click();
@@ -1038,13 +1059,13 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   // Sign-in: set a password in the workspace, connect an agent with a token, sign in from
   // another browser, revoke the token and sign out.
   await page.goto(base + "/artifacts");
-  await page.getByRole("button", { name: "⚿ Set a password" }).click();
+  await sidebarMenu("⚿ Set a password");
   await page.locator("#signin-dialog input[name=password]").fill("correct horse");
   await page.locator("#signin-dialog input[name=again]").fill("correct horse");
   await page.getByRole("button", { name: "Turn on sign-in" }).click();
   await expect(page.locator("#signin-title")).toHaveText("Sign-in is on.");
   await page.locator("#signin-dialog [data-close]").click();
-  await expect(page.getByRole("button", { name: "⚿ Sign-in & tokens" })).toBeVisible();
+  await expect(page.locator("#signin")).toHaveText("⚿ Sign-in & tokens");
   assert.equal((await fetch(base + "/api/artifacts")).status, 401, "the API without sign-in");
   // This browser stays signed in, and previews still load their media, which they request
   // cross-site without the cookie.
@@ -1053,7 +1074,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
     .poll(() => frame.locator("#movie").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
   // Connect an agent makes a token and puts it in the commands.
-  await page.getByRole("button", { name: "⌁ Connect an agent" }).click();
+  await sidebarMenu("⌁ Connect an agent");
   await page.locator("#connect-dialog").getByRole("button", { name: "Make a token" }).click();
   await expect(page.locator("#connect-dialog pre").first()).toContainText("--header \"Authorization: Bearer shx_");
   const token = (await page.locator("#connect-dialog pre").first().textContent()).match(/Bearer (shx_[\w-]+)/)[1];
