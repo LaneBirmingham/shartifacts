@@ -161,3 +161,13 @@ func restrictAndExec(spec Spec, env []string) error {
 	}
 	return syscall.Exec(spec.Exec, append([]string{spec.Exec}, spec.Args...), env)
 }
+
+// deviceOf names the filesystem holding path, so Usable can remember its verdict for every
+// directory on it.
+func deviceOf(path string) (uint64, bool) {
+	var st syscall.Stat_t
+	if err := syscall.Stat(path, &st); err != nil {
+		return 0, false
+	}
+	return uint64(st.Dev), true
+}

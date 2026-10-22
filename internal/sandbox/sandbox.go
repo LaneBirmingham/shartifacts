@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -89,11 +90,40 @@ func Command(self string, spec Spec, env []string) (string, []string, []string, 
 // can (or there is no confinement to try). Some filesystems lose Landlock's rules, so a
 // confined exec there is refused: FUSE mounts such as Docker Desktop's shared folders and
 // Unraid's /mnt/user. It proves it the only reliable way, by running a copy of self
-// confined to a directory in dir.
+// confined to a directory in dir. The verdict is a property of the filesystem, so it is
+// remembered per filesystem and self: a process that opens many apps directories on one
+// disk (a test run, say) pays for one probe, not one each.
 func Usable(self, dir string) error {
 	if Probe().Mechanism == "none" {
 		return nil
 	}
+	if os.MkdirAll(dir, 0700) == nil {
+		if dev, ok := deviceOf(dir); ok {
+			k := usableKey{self, dev}
+			usableMu.Lock()
+			defer usableMu.Unlock()
+			if err, seen := usableCache[k]; seen {
+				return err
+			}
+			err := probeUsable(self, dir)
+			usableCache[k] = err
+			return err
+		}
+	}
+	return probeUsable(self, dir)
+}
+
+type usableKey struct {
+	self string
+	dev  uint64
+}
+
+var (
+	usableMu    sync.Mutex
+	usableCache = map[usableKey]error{}
+)
+
+func probeUsable(self, dir string) error {
 	tmp, err := os.MkdirTemp(dir, ".sandbox-probe-")
 	if err != nil {
 		return err
