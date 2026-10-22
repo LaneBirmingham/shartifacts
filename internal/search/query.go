@@ -10,8 +10,9 @@ import (
 //
 // Plain words match anywhere, forgiving typos and word forms. "Quoted words" must appear
 // together. -word excludes. Filters: kind:react (type:), tag:finance or #finance,
-// is:pinned, has:comments|open|files|video|chart|…, updated:today|week|month|year|30d|
-// 2026-03|>2026-01-01 (also created:), before: and after: dates.
+// is:pinned, is:archived, has:comments|open|files|video|chart|…, updated:today|week|month|
+// year|30d|2026-03|>2026-01-01 (also created:), before: and after: dates. Archived
+// artifacts are left out unless is:archived (only them) or archived:include asks.
 type Query struct {
 	Words   []string `json:"words,omitempty"`
 	Phrases []string `json:"phrases,omitempty"`
@@ -20,6 +21,8 @@ type Query struct {
 	Tags    []string `json:"tags,omitempty"`
 	Has     []string `json:"has,omitempty"`
 	Pinned  bool     `json:"pinned,omitempty"`
+	// Archived is "" to leave archived artifacts out, "only" for just them, or "include".
+	Archived string `json:"archived,omitempty"`
 	// Updated and Created bound when the artifact last changed and was made; zero is open.
 	UpdatedAfter  time.Time `json:"updated_after,omitzero"`
 	UpdatedBefore time.Time `json:"updated_before,omitzero"`
@@ -33,7 +36,7 @@ func (q Query) Empty() bool {
 }
 
 func (q Query) filtered() bool {
-	return len(q.Kinds) > 0 || len(q.Tags) > 0 || len(q.Has) > 0 || q.Pinned ||
+	return len(q.Kinds) > 0 || len(q.Tags) > 0 || len(q.Has) > 0 || q.Pinned || q.Archived == "only" ||
 		!q.UpdatedAfter.IsZero() || !q.UpdatedBefore.IsZero() || !q.CreatedAfter.IsZero() || !q.CreatedBefore.IsZero()
 }
 
@@ -78,10 +81,25 @@ func (q *Query) Filter(key, value string, now time.Time) bool {
 			}
 		}
 	case "is":
-		if v != "pinned" && v != "pin" {
+		switch v {
+		case "pinned", "pin":
+			q.Pinned = true
+		case "archived", "archive":
+			q.Archived = "only"
+		default:
 			return false
 		}
-		q.Pinned = true
+	case "archived":
+		switch v {
+		case "exclude", "no", "false":
+			q.Archived = ""
+		case "only", "yes", "true":
+			q.Archived = "only"
+		case "include", "any", "all":
+			q.Archived = "include"
+		default:
+			return false
+		}
 	case "has":
 		q.Has = append(q.Has, strings.TrimSuffix(v, "s"))
 	case "updated", "modified", "edited", "changed", "created", "made":

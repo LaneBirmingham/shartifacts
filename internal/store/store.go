@@ -21,6 +21,9 @@ import (
 var ErrNotFound = errors.New("artifact not found")
 var ErrConflict = errors.New("artifact changed: reload the latest version before saving")
 
+// ErrNotArchived refuses to delete an artifact in bulk while it is still in the library.
+var ErrNotArchived = errors.New("artifact is not archived: archive it first, or delete it on its own with confirmation")
+
 const MaxContent = 2 << 20
 
 // A revision's supporting files: text served beside its page by relative path.
@@ -62,7 +65,11 @@ type Artifact struct {
 	Owner        string          `json:"owner,omitempty"`
 	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	Pinned       bool            `json:"pinned,omitempty"`
-	Revisions    []Revision      `json:"revisions"`
+	// ArchivedAt is when it was archived, zero while it is in the library. Archived
+	// artifacts keep everything, but listings and search leave them out unless asked, and
+	// only they can be deleted in bulk.
+	ArchivedAt time.Time  `json:"archived_at,omitzero"`
+	Revisions  []Revision `json:"revisions"`
 }
 type Summary struct {
 	ID          string    `json:"id"`
@@ -75,6 +82,7 @@ type Summary struct {
 	Icon        string    `json:"icon,omitempty"`
 	Tags        []string  `json:"tags,omitempty"`
 	Pinned      bool      `json:"pinned,omitempty"`
+	ArchivedAt  time.Time `json:"archived_at,omitzero"`
 	// OpenComments counts unresolved comment threads; Comments counts every comment.
 	OpenComments int `json:"open_comments,omitempty"`
 	Comments     int `json:"comments,omitempty"`
@@ -337,12 +345,47 @@ func NormalizeTags(in []string) ([]string, error) {
 	return out, nil
 }
 
-func (s *Store) List() []Summary {
+// ArchiveFilter says which artifacts a listing or search includes.
+type ArchiveFilter string
+
+const (
+	// ExcludeArchived is the library: everything not archived. It is the default.
+	ExcludeArchived ArchiveFilter = ""
+	OnlyArchived    ArchiveFilter = "only"
+	IncludeArchived ArchiveFilter = "include"
+)
+
+// ParseArchiveFilter reads exclude (or nothing), only or include.
+func ParseArchiveFilter(v string) (ArchiveFilter, error) {
+	switch f := ArchiveFilter(strings.ToLower(strings.TrimSpace(v))); f {
+	case "exclude":
+		return ExcludeArchived, nil
+	case ExcludeArchived, OnlyArchived, IncludeArchived:
+		return f, nil
+	}
+	return "", fmt.Errorf("archived must be exclude, include or only, not %q", v)
+}
+
+// Includes reports whether a listing with this filter shows an artifact.
+func (f ArchiveFilter) Includes(archived bool) bool {
+	switch f {
+	case OnlyArchived:
+		return archived
+	case IncludeArchived:
+		return true
+	}
+	return !archived
+}
+
+// List returns the artifacts the filter includes, most recently updated first.
+func (s *Store) List(f ArchiveFilter) []Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Summary, 0, len(s.items))
 	for _, a := range s.items {
-		out = append(out, s.summary(a))
+		if f.Includes(!a.ArchivedAt.IsZero()) {
+			out = append(out, s.summary(a))
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
@@ -357,7 +400,7 @@ func (s *Store) List() []Summary {
 func (s *Store) summary(a Artifact) Summary {
 	r := a.Revisions[len(a.Revisions)-1]
 	return Summary{ID: a.ID, Title: r.Title, Kind: r.Kind, Version: r.Version, CreatedAt: a.CreatedAt, UpdatedAt: r.CreatedAt,
-		Description: a.Description, Icon: a.Icon, Tags: a.Tags, Pinned: a.Pinned, OpenComments: s.openThreads(a.ID), Comments: len(s.comments[a.ID])}
+		Description: a.Description, Icon: a.Icon, Tags: a.Tags, Pinned: a.Pinned, ArchivedAt: a.ArchivedAt, OpenComments: s.openThreads(a.ID), Comments: len(s.comments[a.ID])}
 }
 func (s *Store) Get(id string) (Artifact, error) {
 	s.mu.Lock()
@@ -491,6 +534,34 @@ func (s *Store) SetPinned(id string, pinned bool) (Artifact, error) {
 	return s.write(a)
 }
 
+// SetArchived moves an artifact into the archive or back to the library, without adding a
+// revision. Archiving an archived artifact keeps when it was first archived.
+func (s *Store) SetArchived(id string, archived bool) (Artifact, error) {
+	unlock := s.lockWrites(id)
+	s.mu.Lock()
+	a, ok := s.items[id]
+	s.mu.Unlock()
+	if !ok {
+		unlock()
+		return Artifact{}, ErrNotFound
+	}
+	if archived == !a.ArchivedAt.IsZero() {
+		unlock()
+		a.Revisions = append([]Revision(nil), a.Revisions...)
+		return a, nil
+	}
+	a.ArchivedAt = time.Time{}
+	if archived {
+		a.ArchivedAt = time.Now().UTC()
+	}
+	a, err := s.write(a)
+	unlock()
+	if err == nil {
+		s.changed(id, "archived", strconv.FormatBool(archived))
+	}
+	return a, err
+}
+
 // lockWrites takes the artifact's write lock and returns its unlock. s.mu is not held.
 func (s *Store) lockWrites(id string) func() {
 	s.mu.Lock()
@@ -535,7 +606,30 @@ func encodeArtifact(a Artifact) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// Delete permanently removes an artifact whose latest version is base, with its comments,
+// assets, shares, data and storage.
 func (s *Store) Delete(id string, base int) error {
+	return s.remove(id, func(a Artifact) error {
+		if base != len(a.Revisions) {
+			return ErrConflict
+		}
+		return nil
+	})
+}
+
+// DeleteArchived is Delete for an artifact that is in the archive, whatever its version:
+// one restored meanwhile is refused with ErrNotArchived.
+func (s *Store) DeleteArchived(id string) error {
+	return s.remove(id, func(a Artifact) error {
+		if a.ArchivedAt.IsZero() {
+			return ErrNotArchived
+		}
+		return nil
+	})
+}
+
+// remove deletes an artifact once check, run holding its write lock, allows it.
+func (s *Store) remove(id string, check func(Artifact) error) error {
 	defer s.lockWrites(id)()
 	s.mu.Lock()
 	a, ok := s.items[id]
@@ -543,9 +637,9 @@ func (s *Store) Delete(id string, base int) error {
 		s.mu.Unlock()
 		return ErrNotFound
 	}
-	if base != len(a.Revisions) {
+	if err := check(a); err != nil {
 		s.mu.Unlock()
-		return ErrConflict
+		return err
 	}
 	if e := os.Remove(filepath.Join(s.dir, id+".json")); e != nil {
 		s.mu.Unlock()

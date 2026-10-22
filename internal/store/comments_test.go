@@ -29,7 +29,7 @@ func TestComments(t *testing.T) {
 	if _, e = s.ResolveComment(a.ID, reply.ID, true); e == nil {
 		t.Fatal("resolved a reply")
 	}
-	if s.List()[0].OpenComments != 1 {
+	if s.List(ExcludeArchived)[0].OpenComments != 1 {
 		t.Fatal("open thread not counted")
 	}
 	if _, e = s.ResolveComment(a.ID, root.ID, true); e != nil {
@@ -40,7 +40,7 @@ func TestComments(t *testing.T) {
 		t.Fatal(e)
 	}
 	list, _ := reopened.Comments(a.ID)
-	if len(list) != 2 || !list[0].Resolved || list[1].Parent != root.ID || reopened.List()[0].OpenComments != 0 {
+	if len(list) != 2 || !list[0].Resolved || list[1].Parent != root.ID || reopened.List(ExcludeArchived)[0].OpenComments != 0 {
 		t.Fatal(list)
 	}
 	if e = reopened.Delete(a.ID, 1); e != nil {

@@ -168,7 +168,16 @@ func (s *Server) build() http.Handler {
 	})
 	mux.HandleFunc("POST /api/media", s.uploadMedia)
 	mux.HandleFunc("GET /media/{id}", func(w http.ResponseWriter, r *http.Request) { s.serveMedia(w, r, r.PathValue("id")) })
-	mux.HandleFunc("GET /api/artifacts", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.Store.List()) })
+	mux.HandleFunc("GET /api/artifacts", func(w http.ResponseWriter, r *http.Request) {
+		// The library by default; ?archived=only is the archive, ?archived=include both.
+		f, e := store.ParseArchiveFilter(r.URL.Query().Get("archived"))
+		if e != nil {
+			respond(w, 400, nil, e)
+			return
+		}
+		writeJSON(w, 200, s.Store.List(f))
+	})
+	s.archiveRoutes(mux)
 	mux.HandleFunc("POST /api/artifacts", func(w http.ResponseWriter, r *http.Request) {
 		var in store.Input
 		if !decode(w, r, &in) {

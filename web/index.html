@@ -45,19 +45,22 @@
         /><kbd title="Press / to search">/</kbd>
       </div>
       <p id="search-help" class="visually-hidden">
-        Typos are fine. Filters: kind:react, tag:finance or #finance, is:pinned, has:comments, has:video, updated:week, "exact phrase", -exclude.
+        Typos are fine. Filters: kind:react, tag:finance or #finance, is:pinned, is:archived, has:comments, has:video, updated:week, before:90d, "exact phrase", -exclude.
       </p>
       <p id="did-you-mean" class="did-you-mean" hidden>
         Did you mean <button id="suggestion" type="button"></button>?
       </p>
       <div class="library-heading">
         <span><span id="library-label">THE LIBRARY</span> <span id="count">0</span></span
-        ><button
-          id="toggle-filters"
-          type="button"
-          aria-expanded="false"
-          aria-controls="filters"
-        >Filters<span id="filter-count" hidden></span></button>
+        ><span class="library-tools"
+          ><button id="toggle-select" type="button" aria-pressed="false">Select</button
+          ><button
+            id="toggle-filters"
+            type="button"
+            aria-expanded="false"
+            aria-controls="filters"
+          >Filters<span id="filter-count" hidden></span></button
+        ></span>
       </div>
       <div id="filters" class="filters" hidden>
         <div class="library-filters">
@@ -98,7 +101,17 @@
         <div id="tag-chips" class="tag-chips" role="group" aria-label="Filter by tag" hidden></div>
       </div>
       <div id="active-filters" class="active-filters" role="group" aria-label="Active filters" hidden></div>
+      <div id="bulk-bar" class="bulk-bar" role="toolbar" aria-label="Selected artifacts" hidden>
+        <span id="bulk-count" aria-live="polite">None selected</span
+        ><button id="bulk-all" type="button">Select all</button
+        ><button id="bulk-archive" type="button">Archive</button
+        ><button id="bulk-restore" type="button">Restore</button
+        ><button id="bulk-delete" type="button" class="danger">Delete forever</button>
+      </div>
       <nav id="library" aria-label="Artifact library"></nav>
+      <button id="toggle-archive" class="archive-link" type="button" aria-pressed="false">
+        <span aria-hidden="true">▤</span> Archive
+      </button>
       <footer>
         <div id="sidebar-menu" class="sidebar-menu" hidden>
           <a class="button" href="/" id="to-apps">▦ Apps <span>↗</span></a>
@@ -193,7 +206,13 @@
           ><button id="pin">Pin to top of library</button
           ><button id="copy-source">Copy source</button
           ><button id="fork">Duplicate artifact</button
+          ><button id="archive">Archive artifact</button
           ><button id="delete" class="danger">Delete artifact & history</button>
+        </div>
+        <div id="archived-notice" class="notice archived-notice" hidden>
+          <span id="archived-at">Archived.</span> It stays out of the library and search until restored.
+          <button id="unarchive">Restore to library</button
+          ><button id="delete-archived" class="danger">Delete forever</button>
         </div>
         <div id="remote-change" class="notice" hidden>
           A newer version is available. Your draft is kept here.

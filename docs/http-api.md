@@ -8,7 +8,7 @@ With [sign-in](security.md#sign-in) on, every request below needs a token, `-H "
 curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts \
   -d '{"title":"Hello","kind":"html","content":"<h1>Hello, local network.</h1>"}'
 
-curl http://localhost:8080/api/artifacts
+curl http://localhost:8080/api/artifacts                   # the library; ?archived=only|include for the archive
 curl http://localhost:8080/api/artifacts/ARTIFACT_ID
 
 curl -X PUT -H 'Content-Type: application/json' \
@@ -22,6 +22,12 @@ curl -X PUT -H 'Content-Type: application/json' \
 
 curl -OJ 'http://localhost:8080/api/artifacts/ARTIFACT_ID/download?version=1'
 curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
+
+# Archive several, then empty the archive (delete takes only archived artifacts)
+curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts/bulk \
+  -d '{"op":"archive","ids":["ARTIFACT_ID","OTHER_ID"]}'
+curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts/bulk \
+  -d '{"op":"delete","ids":["ARTIFACT_ID","OTHER_ID"]}'
 ```
 
 | Endpoint | Body | Purpose |
@@ -30,7 +36,9 @@ curl -X DELETE 'http://localhost:8080/api/artifacts/ARTIFACT_ID?base_version=3'
 | `GET/POST /api/artifacts/{id}/comments` | `{body, parent, quote, author}` | List or add comments |
 | `PUT /api/artifacts/{id}/comments/{comment}` | `{resolved}` | Resolve or reopen a thread |
 | `PUT /api/artifacts/{id}/pin` | `{pinned}` | Pin to the top of the library (no new revision) |
-| `GET /api/search?q=&kind=&tag=&has=&updated=&sort=&limit=` | | Ranked search with excerpts (`q` takes the filters in **Finding things**; the other parameters add them, and `tag` repeats) |
+| `GET /api/artifacts?archived=` | | Summaries, most recently updated first: the library by default, `only` the archive, `include` both (archived ones carry `archived_at`); another value is `400` |
+| `POST /api/artifacts/bulk` | `{op, ids}` | `archive`, `restore` or `delete` up to 200 artifacts (no new revision). `delete` permanently deletes archived artifacts only. Returns `{op, done, failed: [{id, error}]}`: one missing, or not archived for `delete`, fails without stopping the rest |
+| `GET /api/search?q=&kind=&tag=&has=&updated=&archived=&sort=&limit=` | | Ranked search with excerpts (`q` takes the filters in **Finding things**; the other parameters add them, and `tag` repeats). The archive is left out unless `archived` is `include` or `only`; `sort=oldest` lists the least recently updated first |
 | `GET /api/artifacts/{id}/related` | | Artifacts sharing its vocabulary, and suggested tags |
 | `POST /api/artifacts/{id}/errors` | `{version, message}` | Record a runtime error seen in a saved version |
 | `POST /api/complete` | `{prompt}` or `{messages}` | `window.claude.complete`; `503` unless `ANTHROPIC_API_KEY` is set |

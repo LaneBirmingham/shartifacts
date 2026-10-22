@@ -19,6 +19,7 @@ export default function App() { const rows = [{ name: "Groceries", value: 420 }]
 		{ID: "deck", Kind: "slides", Title: "Platform roadmap", Content: "# Platform roadmap\n\nReliability first\n\n---\n\n# Observability\n\nDashboards for every service\n\nNote: mention the on-call rota", Notes: []string{"Added the observability slide"}},
 		{ID: "flow", Kind: "mermaid", Title: "Deploy pipeline", Content: "flowchart LR\n  Build --> Test --> Deploy"},
 		{ID: "clip", Kind: "html", Title: "Holiday clip", Content: `<video controls src="/media/abc123.mp4"></video><p>Beach trip</p>`},
+		{ID: "draft", Kind: "html", Title: "Packing list", Tags: []string{"travel"}, Content: `<p>Towels, sunscreen and the Suncorp policy number.</p>`},
 	}
 	var docs []*Doc
 	for _, s := range sources {
@@ -31,6 +32,7 @@ export default function App() { const rows = [{ name: "Groceries", value: 420 }]
 		"deck":     {Created: now.AddDate(0, 0, -3), Updated: now.AddDate(0, 0, -3)},
 		"flow":     {Created: now.AddDate(0, 0, -40), Updated: now.AddDate(0, 0, -40)},
 		"clip":     {Created: now.AddDate(0, 0, -1), Updated: now.AddDate(0, 0, -1)},
+		"draft":    {Archived: true, Created: now.AddDate(0, -4, 0), Updated: now.AddDate(0, -3, 0)},
 	}
 	return Build(docs), meta
 }
@@ -126,11 +128,26 @@ func TestFiltersAndPhrases(t *testing.T) {
 		`"lemon pasta"`:         "recipes",
 		`"pasta lemon"`:         "",
 		"finance -suncorp":      "budget",
+		// The archive stays out of every search unless one asks for it.
+		"suncorp":                    "mortgage",
+		"is:archived":                "draft",
+		"is:archived suncorp":        "draft",
+		"archived:include kind:html": "clip,mortgage,draft",
+		"archived:include #travel":   "draft",
+		"is:archived archived:no":    "budget,clip,deck,mortgage,flow,recipes",
 	}
 	for q, want := range cases {
 		if got := ids(find(t, q)); got != want {
 			t.Errorf("%q: got [%s], want [%s]", q, got, want)
 		}
+	}
+}
+
+func TestOldestFirst(t *testing.T) {
+	ix, meta := library()
+	r := ix.Search(Parse("archived:include", now), meta, Options{Sort: "oldest", Now: now})
+	if got := ids(r); got != "draft,recipes,flow,mortgage,deck,clip,budget" {
+		t.Fatal(got)
 	}
 }
 

@@ -55,8 +55,74 @@ func TestRevisionsPersistenceAndConflicts(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(reloaded.List()) != 0 {
+	if len(reloaded.List(ExcludeArchived)) != 0 {
 		t.Fatal("deletion not durable")
+	}
+}
+func TestArchive(t *testing.T) {
+	dir := t.TempDir()
+	s, e := Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var events []string
+	s.OnChange(func(_, kind, detail string) { events = append(events, kind+":"+detail) })
+	kept, _ := s.Save("", Input{Title: "Kept", Kind: "html", Content: "k"})
+	old, _ := s.Save("", Input{Title: "Old", Kind: "html", Content: "o"})
+	archived, e := s.SetArchived(old.ID, true)
+	if e != nil || archived.ArchivedAt.IsZero() || len(archived.Revisions) != 1 {
+		t.Fatal(archived, e)
+	}
+	// Archiving again keeps the first time, and announces nothing.
+	if again, _ := s.SetArchived(old.ID, true); !again.ArchivedAt.Equal(archived.ArchivedAt) || len(events) != 3 {
+		t.Fatal(again, events)
+	}
+	ids := func(f ArchiveFilter) string {
+		var out []string
+		for _, a := range s.List(f) {
+			out = append(out, a.Title)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := ids(ExcludeArchived) + "|" + ids(OnlyArchived) + "|" + ids(IncludeArchived); got != "Kept|Old|Old,Kept" {
+		t.Fatal(got)
+	}
+	// Only archived artifacts are deleted without a version.
+	if e = s.DeleteArchived(kept.ID); !errors.Is(e, ErrNotArchived) {
+		t.Fatal(e)
+	}
+	if e = s.DeleteArchived("missing"); !errors.Is(e, ErrNotFound) {
+		t.Fatal(e)
+	}
+	reloaded, _ := Open(dir)
+	if got := reloaded.List(OnlyArchived); len(got) != 1 || !got[0].ArchivedAt.Equal(archived.ArchivedAt) {
+		t.Fatal("archive not durable", got)
+	}
+	if restored, _ := s.SetArchived(old.ID, false); !restored.ArchivedAt.IsZero() {
+		t.Fatal(restored)
+	}
+	if e = s.DeleteArchived(old.ID); !errors.Is(e, ErrNotArchived) {
+		t.Fatal("deleted a restored artifact", e)
+	}
+	s.SetArchived(old.ID, true)
+	if e = s.DeleteArchived(old.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Get(old.ID); !errors.Is(e, ErrNotFound) {
+		t.Fatal(e)
+	}
+	if want := "version:1,version:1,archived:true,archived:false,archived:true,deleted:"; strings.Join(events, ",") != want {
+		t.Fatal(events)
+	}
+}
+func TestParseArchiveFilter(t *testing.T) {
+	for in, want := range map[string]ArchiveFilter{"": ExcludeArchived, "exclude": ExcludeArchived, "Only": OnlyArchived, "include": IncludeArchived} {
+		if got, e := ParseArchiveFilter(in); e != nil || got != want {
+			t.Fatal(in, got, e)
+		}
+	}
+	if _, e := ParseArchiveFilter("all"); e == nil {
+		t.Fatal("accepted all")
 	}
 }
 func TestValidation(t *testing.T) {
@@ -71,7 +137,7 @@ func TestValidation(t *testing.T) {
 			if _, e := s.Save("", tc.in); e == nil {
 				t.Fatal("invalid input accepted")
 			}
-			if len(s.List()) != 0 {
+			if len(s.List(ExcludeArchived)) != 0 {
 				t.Fatal("invalid input persisted")
 			}
 		})
