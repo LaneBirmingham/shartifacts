@@ -123,7 +123,8 @@ func TestArchiveTools(t *testing.T) {
 		}
 		return strings.Join(got, ","), out
 	}
-	done := sc(call("archive_artifacts", map[string]any{"ids": ids[:2]}))
+	// update_artifact archives: many at once with ids, without revisions.
+	done := sc(call("update_artifact", map[string]any{"ids": ids[:2], "archived": true}))
 	if len(done["done"].([]any)) != 2 || len(done["failed"].([]any)) != 0 {
 		t.Fatal(done)
 	}
@@ -146,8 +147,17 @@ func TestArchiveTools(t *testing.T) {
 	if res := sc(call("search_artifacts", map[string]any{"query": "scratch", "archived": "only"}))["results"].([]any); len(res) != 1 || res[0].(map[string]any)["archived_at"] == nil {
 		t.Fatal(res)
 	}
-	// Restoring and saving both say where the artifact stands.
-	sc(call("archive_artifacts", map[string]any{"ids": ids[1:2], "restore": true}))
+	// With ids, only archived goes; a mixed call changes nothing.
+	for _, args := range []map[string]any{{"ids": ids[1:2]}, {"ids": ids[1:2], "archived": false, "title": "Renamed"}, {"id": ids[1], "ids": ids[1:2], "archived": false}} {
+		if r := call("update_artifact", args); r["isError"] != true {
+			t.Fatal("accepted", args)
+		}
+	}
+	// One alone needs no base_version and adds no revision; saving says where it stands.
+	restored := sc(call("update_artifact", map[string]any{"id": ids[1], "archived": false}))
+	if restored["archived"] != false || restored["version"] != float64(1) {
+		t.Fatal(restored)
+	}
 	if got, _ := listed(""); got != "Roadmap,Scratch" {
 		t.Fatal(got)
 	}
@@ -163,7 +173,13 @@ func TestArchiveTools(t *testing.T) {
 	if asked := sc(call("delete_artifact", map[string]any{"id": ids[2], "base_version": 1})); asked["confirm"] == nil || asked["deleted"] != nil {
 		t.Fatal("deleted a library artifact without confirmation", asked)
 	}
-	sc(call("archive_artifacts", map[string]any{"ids": ids[2:]}))
+	// A revision and archiving can go together; the revision still needs base_version.
+	if r := call("update_artifact", map[string]any{"id": ids[2], "note": "last word", "archived": true}); r["isError"] != true {
+		t.Fatal("revised without base_version")
+	}
+	if both := sc(call("update_artifact", map[string]any{"id": ids[2], "note": "last word", "archived": true, "base_version": 1})); both["version"] != float64(2) || both["archived_at"] == nil {
+		t.Fatal(both)
+	}
 	if gone := sc(call("delete_artifact", map[string]any{"id": ids[2]})); gone["deleted"] != true {
 		t.Fatal(gone)
 	}

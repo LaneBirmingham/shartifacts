@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -114,7 +115,7 @@ func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
 	}
 	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
 
-The library grows with every artifact, so agents keep it tidy. archive_artifacts moves artifacts (many at once) out of the library into the archive, reversibly: they keep their versions, data, comments and links, and restore brings them back. list_artifacts and search_artifacts leave the archive out unless archived is include or only. When the person asks you to tidy up, archive what is stale, superseded or a throwaway test (search_artifacts sort:oldest or before:90d finds the stale), and say what you archived. delete_artifact with ids permanently deletes archived artifacts, to empty the archive when the person wants that. An artifact still in the library is deleted only when the person asks, with delete_artifact's confirmation.
+The library grows with every artifact, so agents keep it tidy. update_artifact with archived:true moves artifacts (ids for many at once) out of the library into the archive, reversibly: they keep their versions, data, comments and links, and archived:false restores them. list_artifacts and search_artifacts leave the archive out unless archived is include or only. When the person asks you to tidy up, archive what is stale, superseded or a throwaway test (search_artifacts sort:oldest or before:90d finds the stale), and say what you archived. delete_artifact with ids permanently deletes archived artifacts, to empty the archive when the person wants that. An artifact still in the library is deleted only when the person asks, with delete_artifact's confirmation.
 
 Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data files (CSV, JSON, text, Markdown, XLSX, PDF): upload files. Add ?name=FILE to the upload URL to keep a file's name; artifacts read data files with await window.fs.readFile(name, {encoding: 'utf8'}) (omit encoding for bytes). Do not manually transcribe base64 into source (2 MiB limit). Shell agents: run the curl command from list_media (raw bytes, max 256 MiB). Only clients that can supply bytes programmatically use begin_media_upload then upload_media_chunk (<=1048576 bytes per chunk, use returned offset, final:true on last). If the shell cannot reach the upload host, say so. list_media returns reusable URLs; embed them literally, e.g. <video controls playsinline src="/media/ID.mp4">, <audio controls src="/media/ID.mp3">, <img src="/media/ID.png">, <track kind="captions" src="/media/ID.vtt" srclang="en"> (set crossorigin="anonymous" on the parent). Autoplay needs muted playsinline. Verify media decodes/plays in the saved preview; report missing or corrupt media instead of claiming success.
 
@@ -261,7 +262,9 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		return nil, saved(a), nil
 	})
 	type UpdateInput struct {
-		ID           string             `json:"id"`
+		ID           string             `json:"id,omitempty" jsonschema:"Artifact ID"`
+		IDs          []string           `json:"ids,omitempty" jsonschema:"Several artifacts (up to 200) to archive or restore together; with ids send only archived"`
+		Archived     *bool              `json:"archived,omitempty" jsonschema:"true moves it to the archive (out of the library, list_artifacts and search_artifacts; reversible, keeps everything), false restores it; alone it adds no revision and needs no base_version"`
 		Title        string             `json:"title,omitempty" jsonschema:"Omit to keep"`
 		Kind         string             `json:"kind,omitempty" jsonschema:"Omit to keep"`
 		Content      *string            `json:"content,omitempty" jsonschema:"Full new source; omit to keep or when sending edits"`
@@ -272,9 +275,35 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		Tags         *[]string          `json:"tags,omitempty" jsonschema:"Replaces the tags; omit to keep"`
 		Capabilities map[string]any     `json:"capabilities,omitempty" jsonschema:"Replaces the declared capabilities; omit to keep"`
 		Note         string             `json:"note,omitempty"`
-		BaseVersion  int                `json:"base_version" jsonschema:"Latest version from get_artifact"`
+		BaseVersion  int                `json:"base_version,omitempty" jsonschema:"Latest version from get_artifact; needed for every change but archived"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision. Prefer edits for small changes, content for rewrites. Pass the latest base_version; on conflict re-read. Returns id, version, title, kind, and any warnings."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
+		// Archiving is not a revision: alone, it neither needs nor checks base_version.
+		revising := in.Title != "" || in.Kind != "" || in.Content != nil || in.Edits != nil || in.Files != nil || in.Description != nil ||
+			in.Icon != nil || in.Tags != nil || in.Capabilities != nil || in.Note != ""
+		if in.IDs != nil {
+			switch {
+			case in.ID != "":
+				return nil, nil, errors.New("send id or ids, not both")
+			case in.Archived == nil || revising:
+				return nil, nil, errors.New("with ids, send only archived: true to archive them or false to restore them")
+			}
+			op := map[bool]string{true: "archive", false: "restore"}[*in.Archived]
+			out, e := s.bulk(op, in.IDs)
+			if e != nil {
+				return nil, nil, e
+			}
+			return nil, out, nil
+		}
+		if in.Archived != nil && !revising {
+			a, e := s.Store.SetArchived(in.ID, *in.Archived)
+			if e != nil {
+				return nil, nil, e
+			}
+			out := saved(a)
+			out["archived"] = *in.Archived
+			return nil, out, nil
+		}
 		next := store.Input{Title: in.Title, Kind: in.Kind, Edits: in.Edits, Files: in.Files, Note: in.Note, Description: in.Description, Icon: in.Icon, Tags: in.Tags, Capabilities: rawJSON(in.Capabilities), BaseVersion: in.BaseVersion}
 		switch {
 		case in.Content != nil && in.Edits != nil:
@@ -287,6 +316,11 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 		a, e := s.Store.Save(in.ID, next)
 		if e != nil {
 			return nil, nil, e
+		}
+		if in.Archived != nil {
+			if a, e = s.Store.SetArchived(in.ID, *in.Archived); e != nil {
+				return nil, nil, e
+			}
 		}
 		return nil, saved(a), nil
 	})

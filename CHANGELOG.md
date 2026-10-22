@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-10-22
 
-Getting ready for a public release: simpler setup, clear modes, and a harder edge.
+The first public release: simpler setup, clear modes, and a harder edge.
 
 ### Upgrading
 
@@ -13,7 +13,7 @@ Getting ready for a public release: simpler setup, clear modes, and a harder edg
 
 ### Added
 
-- **Archive** ([docs/artifacts.md](docs/artifacts.md#editing)): archive artifacts, one or many at once with **Select**, to keep the library short. Archived artifacts keep everything and still open by their link, but leave the library, search and related lists until restored; the **Archive** view lists, searches, restores and permanently deletes them. Agents tidy up with `archive_artifacts` and empty the archive with `delete_artifact`'s new `ids`, without a confirmation round for archived artifacts; `list_artifacts` and `search_artifacts` leave the archive out unless `archived` asks, and search sorts by `oldest`. Over HTTP: `POST /api/artifacts/bulk` and `?archived=`.
+- **Archive** ([docs/artifacts.md](docs/artifacts.md#editing)): archive artifacts, one or many at once with **Select**, to keep the library short. Archived artifacts keep everything and still open by their link, but leave the library, search and related lists until restored; the **Archive** view lists, searches, restores and permanently deletes them. Agents tidy up with `update_artifact`'s new `archived` (and `ids` for many at once) and empty the archive with `delete_artifact`'s new `ids`, without a confirmation round for archived artifacts; `list_artifacts` and `search_artifacts` leave the archive out unless `archived` asks, and search sorts by `oldest`. Over HTTP: `POST /api/artifacts/bulk` and `?archived=`.
 - **Optional sign-in** ([docs/security.md](docs/security.md#sign-in)): set an owner password under **Sign-in** in the workspace, or with `shartifacts auth set-password`, and browsers sign in once (30-day sessions) while agents send a revocable token per agent (`Authorization: Bearer shx_…`). **Connect an agent** makes a token and fills it into the commands. Share links and app links stay public. `shartifacts auth` also makes and revokes tokens and resets a lost password from the server's shell. Passwords are stored as PBKDF2 hashes and tokens as digests; failed logins are throttled; app sessions and upload URLs end with the sign-in they were made for; tokens never reach app backends.
 - **Modes** ([docs/modes.md](docs/modes.md)): private, public sharing with the bundled Caddy, and public sharing through Cloudflare Tunnel or your own proxy. The mode is logged at startup and reported by `/api/config`.
 - **Agent-driven setup**: [skills/shartifacts-setup](skills/shartifacts-setup/SKILL.md), and a README that starts with a prompt to give your agent.
