@@ -810,6 +810,11 @@ function renderShares() {
     const copy = node("button", "", "Copy");
     copy.type = "button";
     copy.onclick = async () => ((await shartifactsCopy(input.value)) ? toast("Copied") : input.select());
+    // Shown large, so someone nearby can scan the link off this screen.
+    const qr = node("button", "", "QR code");
+    qr.type = "button";
+    qr.disabled = !sh.url;
+    qr.onclick = () => shartifactsShowQR(sh.url);
     const revoke = node("button", "quiet danger", "Revoke");
     revoke.type = "button";
     revoke.onclick = async () => {
@@ -822,7 +827,7 @@ function renderShares() {
         toast(e.message);
       }
     };
-    copyRow.append(input, copy, revoke);
+    copyRow.append(input, copy, qr, revoke);
     row.append(copyRow, node("small", "", `${sh.version ? `Version ${sh.version}` : "Follows live"}${sh.read_only ? " · read-only" : ""} · created ${timeAgo(sh.created_at)}`));
     list.append(row);
   }

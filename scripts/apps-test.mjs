@@ -176,6 +176,15 @@ try {
   await page.getByRole("button", { name: "Link that follows live" }).click();
   const shareURL = await page.locator("#share-list input").first().inputValue();
   assert.match(shareURL, new RegExp(`^http://[a-z2-7]{16}\\.localhost:${port}/p/`));
+  // The link's QR code opens large over the share panel and closes without closing it.
+  await page.locator("#share-list").getByRole("button", { name: "QR code" }).first().click();
+  const qr = page.locator("dialog.qr-overlay");
+  await expect(qr.getByRole("img", { name: `QR code for ${shareURL}` })).toBeVisible();
+  await expect(qr.locator(".qr-url")).toHaveText(shareURL);
+  assert.ok((await qr.boundingBox()).width > 600, "the QR overlay fills most of the screen");
+  await page.keyboard.press("Escape");
+  await expect(qr).toBeHidden();
+  await expect(page.locator("#share-dialog")).toBeVisible();
   await page.locator("#share-dialog [data-close]").click();
   const visitor = await browser.newPage({ viewport: { width: 390, height: 844 } });
   visitor.on("pageerror", (e) => errors.push("visitor: " + e.message));
