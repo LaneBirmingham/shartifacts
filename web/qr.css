@@ -1,0 +1,39 @@
+/* The QR code overlay (qr.js), shared by the apps hub and the artifacts workspace. It fills
+   most of the screen so a phone across a table can scan it, and stays black on white in dark
+   mode because some scanners do not read inverted codes. */
+dialog.qr-overlay {
+  width: min(92vw, 92dvh);
+  max-width: none;
+  max-height: none;
+  padding: clamp(16px, 3vmin, 32px);
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  color: #141413;
+  text-align: center;
+  cursor: zoom-out;
+}
+dialog.qr-overlay::backdrop {
+  background: rgb(20 20 19 / 85%);
+  backdrop-filter: blur(6px);
+}
+.qr-code svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(92dvh - 150px);
+  margin: 0 auto;
+}
+dialog.qr-overlay p {
+  color: #141413;
+}
+.qr-url {
+  margin: 12px 0 4px;
+  font: 14px var(--font-code);
+  overflow-wrap: anywhere;
+}
+dialog.qr-overlay .qr-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #6b6a65;
+}

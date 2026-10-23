@@ -611,14 +611,18 @@ i {
   gap: var(--space-xs);
   margin: var(--space-md) 0;
 }
+/* A grid item's min-width stops a long link stretching the list past the dialog, and on a
+   narrow screen the buttons wrap below the link rather than squeezing it to nothing. */
 .share-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-xs);
   font-size: 13px;
+  min-width: 0;
 }
 .share-row code {
-  flex: 1;
+  flex: 1 1 200px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

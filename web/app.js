@@ -1455,6 +1455,11 @@ async function renderShares() {
       const copyBtn = node("button", "", "Copy");
       copyBtn.type = "button";
       copyBtn.onclick = () => copy(sh.url);
+      // Shown large, so someone nearby can scan the link off this screen.
+      const qr = node("button", "", "QR code");
+      qr.type = "button";
+      qr.disabled = !sh.url;
+      qr.onclick = () => shartifactsShowQR(sh.url);
       const revoke = node("button", "danger", "Revoke");
       revoke.type = "button";
       revoke.onclick = async () => {
@@ -1463,7 +1468,7 @@ async function renderShares() {
         toast("Link revoked");
         renderShares();
       };
-      row.append(node("code", "", sh.url || "(sharing is off)"), node("span", "fineprint", sh.version ? `v${sh.version}` : "latest"), copyBtn, revoke);
+      row.append(node("code", "", sh.url || "(sharing is off)"), node("span", "fineprint", sh.version ? `v${sh.version}` : "latest"), copyBtn, qr, revoke);
       return row;
     }),
   );
