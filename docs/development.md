@@ -21,6 +21,14 @@ docs/                   documentation
 
 The server is plain `net/http` with no framework. Each feature registers its routes on one mux, and `guard` decides who may reach anything at all. Comments explain *why*. Keep it that way: most of the code is security-relevant, and the reasoning is what a reviewer needs.
 
+## Branches and remotes
+
+`main` is the one long-lived branch. Work happens on a short-lived branch named for what it does (`feat/…`, `fix/…`, `docs/…`, or `t3/<slug>` when an agent made it), it is reviewed as a pull request, and the branch is deleted once it merges. `git branch -vv` should show `main` and whatever you are working on, nothing else: a leftover branch means its pull request is open or was merged without the branch being removed.
+
+`origin` is the canonical GitHub repository and the only remote that accepts pushes. If you keep a second copy, such as a self-hosted one on your own network, make it a **read-only pull mirror** of GitHub rather than a second place to push. One writer is what keeps the two copies from disagreeing about what `main` is, and a mirror that also accepts pushes is how a repository quietly ends up with two unrelated histories and a `main` that means something different depending on where you look. Add such a copy to a checkout as a fetch-only remote (`git remote add mirror <url>`) and never push to it.
+
+Gitea, Forgejo and GitLab all offer this as a built-in mirror setting with an interval; prefer it to a cron job, so the copy stays a platform feature rather than a script of your own.
+
 ## Build and test
 
 ```sh
