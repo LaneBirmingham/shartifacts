@@ -111,6 +111,7 @@ The workspace accepts only loopback, private-network and Tailscale clients, beca
 - [Claude compatibility](docs/claude-compatibility.md): source written for Claude, and the `claude.use` runtime
 - [Media and data files](docs/media.md): uploads, embedding, limits
 - [Apps](docs/apps.md): the full-stack app contract, deploys and the runner
+- [Port registry](docs/ports.md): which ports services use on each machine, for agents that deploy things
 - [HTTP API](docs/http-api.md)
 - [Security model](docs/security.md)
 - [Development](docs/development.md): building, tests and code layout

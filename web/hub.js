@@ -111,6 +111,76 @@ async function refresh() {
   renderHome();
   renderTabs();
   for (const view of state.views.values()) syncView(view);
+  refreshPorts();
+}
+
+// ---- ports ----------------------------------------------------------------------
+
+let portsShown = null;
+
+// refreshPorts redraws the port registry only when it changed, so a poll never moves the
+// page under someone about to release a claim.
+async function refreshPorts() {
+  let body;
+  try {
+    body = await api("/api/ports");
+  } catch {
+    return;
+  }
+  const text = JSON.stringify(body.claims);
+  if (text === portsShown) return;
+  portsShown = text;
+  renderPorts(body.claims);
+}
+
+function renderPorts(claims) {
+  const hosts = new Map();
+  for (const c of claims) {
+    if (!hosts.has(c.host)) hosts.set(c.host, []);
+    hosts.get(c.host).push(c);
+  }
+  $("#port-count").textContent = claims.length
+    ? `${claims.length} port${claims.length === 1 ? "" : "s"} on ${hosts.size} machine${hosts.size === 1 ? "" : "s"}`
+    : "";
+  $("#ports-empty").hidden = claims.length > 0;
+  const list = $("#port-hosts");
+  list.replaceChildren();
+  for (const [host, rows] of hosts) {
+    const card = node("section", "port-host");
+    card.append(node("h3", "port-host-name", host));
+    const table = node("table", "port-table");
+    for (const c of rows) {
+      const tr = node("tr");
+      const port = node("td", "port-number", String(c.port));
+      if (c.protocol !== "tcp") port.append(node("span", "port-proto", `/${c.protocol}`));
+      const service = node("td", "port-service");
+      service.append(node("strong", "", c.service));
+      if (c.note) service.append(node("small", "", c.note));
+      const who = node("td", "port-owner", c.owner || "");
+      who.append(node("small", "", timeAgo(c.updated_at)));
+      who.title = `Claimed ${new Date(c.claimed_at).toLocaleString()}`;
+      const release = node("button", "quiet port-release", "×");
+      release.type = "button";
+      release.title = `Release ${c.port}/${c.protocol} on ${host}`;
+      release.setAttribute("aria-label", release.title);
+      release.onclick = async () => {
+        if (!confirm(`Release ${c.port}/${c.protocol} on ${host} (${c.service})? Do this once the service no longer listens there.`)) return;
+        try {
+          await api(`/api/ports/${encodeURIComponent(host)}/${c.port}?protocol=${c.protocol}`, { method: "DELETE" });
+          toast(`Released ${c.port}/${c.protocol} on ${host}`);
+        } catch (e) {
+          toast(e.message);
+        }
+        refreshPorts();
+      };
+      const action = node("td", "port-action");
+      action.append(release);
+      tr.append(port, service, who, action);
+      table.append(tr);
+    }
+    card.append(table);
+    list.append(card);
+  }
 }
 
 const summary = (id) => state.apps.find((a) => a.id === id);

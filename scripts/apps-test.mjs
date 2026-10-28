@@ -79,6 +79,17 @@ try {
   await expect(page.locator("#rt-backends")).toContainText("Go");
   await page.screenshot({ path: "test-results/apps-home.png" });
 
+  // The port registry: an agent claims a port, the launcher lists it, a person releases it.
+  const claimed = await tool("ports", { op: "claim", host: "myserver", from: 8100, service: "grafana", note: "dashboards" });
+  assert.equal(claimed.claim.port, 8100);
+  const portRow = page.locator(".port-host", { hasText: "myserver" }).locator("tr", { hasText: "grafana" });
+  await expect(portRow).toContainText("8100");
+  await expect(page.locator("#port-count")).toHaveText("1 port on 1 machine");
+  page.once("dialog", (d) => d.accept());
+  await portRow.getByRole("button", { name: "Release 8100/tcp on myserver" }).click();
+  await expect(page.locator("#ports-empty")).toBeVisible();
+  assert.equal((await tool("ports", {})).claims.length, 0);
+
   // Open the app in a tab; its page talks to its backend through the sandbox.
   await page.locator(".app-card", { hasText: "Team notes" }).click();
   await expect(page).toHaveURL(`${base}/apps/${id}`);

@@ -87,6 +87,19 @@
               ><button id="empty-template" class="quiet" type="button">Deploy the notes template</button>
             </div>
           </div>
+          <div class="section-heading ports-heading">
+            <h2>Ports in use</h2>
+            <span id="port-count" class="count"></span>
+          </div>
+          <p class="section-lede">
+            Which ports services use on each machine of your network, so an agent deploying something new picks
+            a free one. Agents claim and release them with the <code>ports</code> tool; app backends need none.
+          </p>
+          <div id="port-hosts" class="port-hosts"></div>
+          <p id="ports-empty" class="fineprint" hidden>
+            Nothing claimed yet. Ask your agent to record what already runs, such as
+            <em>“register the ports my Docker containers publish in shartifacts”</em>.
+          </p>
         </div>
       </section>
     </main>

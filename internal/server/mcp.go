@@ -105,7 +105,9 @@ func rawJSON(v map[string]any) json.RawMessage {
 	return b
 }
 
-func (s *Server) mcpServer(baseURL, uploadPath string) *mcp.Server {
+// mcpServer builds the server for one request; agent is the name of the token that signed
+// it in, if one did.
+func (s *Server) mcpServer(baseURL, uploadPath, agent string) *mcp.Server {
 	claudeNote := ""
 	if s.Claude != nil {
 		claudeNote = "\nArtifacts can call Claude with await window.claude.complete(prompt) (or an array of {role, content} messages); it resolves to the reply text.\n"
@@ -136,6 +138,8 @@ Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data f
 
 Apps are full-stack micro frontends shown as tabs on the home page: a React/TypeScript frontend and an optional Go (or prebuilt Rust) backend with its own data, deployed as numbered versions you can preview, promote and roll back, and shared through public links. Three tools: get_app (guide:true first: how to build one here), deploy_app (create, then ship versions) and manage_app (promote, update, restart, call, share, delete).
 
+Ports: the ports tool is the network's port registry, a ledger of which ports services use on each machine here. Before you publish a port anywhere on the network (a Docker container, a dev server, anything that listens), list the host's claims (reuse a host name from hosts) and claim the port, or claim without port to get the lowest free one at or above from; release it when you remove the service. It knows only what was claimed, so check the machine too when you can. App backends never need one: they listen on $PORT.
+
 Before updating, get_artifact for the latest base_version. For small changes send edits (old_str/new_str copied exactly from the latest source) instead of resending content. Give people links on ` + links + `, e.g. ` + links + `/a/{id}, even if you connected through another address; the upload URL below is for your shell, not for people.
 
 New visual artifacts use the get_design_system default. Explicit user design instructions always override it. Preserve an existing artifact's design when editing; never restyle supplied source or plain code/data/diagrams.
@@ -148,12 +152,13 @@ Before updating, get_artifact for the latest base_version.
 Previews are sandboxed: no network, iframes, external URLs (bundled libraries aside) or localStorage; use window.storage.
 New visual artifacts use get_design_system. Explicit user design instructions always override it. Preserve an existing artifact's design when editing.
 Archive with update_artifact archived:true (ids for many); empty the archive with delete_artifact ids.
+Before publishing a port on a machine here (Docker, a dev server), list and claim it with ports.
 Upload files with the curl command from list_media. Do not manually transcribe base64.
 Give people links on ` + links + `, e.g. ` + links + `/a/{id}; the upload URL is for your shell.
-Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps).
+Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps, ports).
 ` + uploadLines
 	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: appVersion}, &mcp.ServerOptions{Instructions: summary})
-	m.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	m.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps, the port registry and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: guideURI, MIMEType: "text/plain", Text: guide}}}, nil
 	})
 	type ListInput struct {
@@ -369,6 +374,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 	s.addCommentTool(m)
 	s.addAgentTools(m)
 	s.addAppTools(m, baseURL, links)
+	s.addPortsTool(m, agent)
 	type ListMediaInput struct {
 		Name   string `json:"name,omitempty"`
 		Type   string `json:"type,omitempty" jsonschema:"Only this MIME type or family, e.g. video or image/png"`

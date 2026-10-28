@@ -216,6 +216,7 @@ try {
     "list_artifacts",
     "list_media",
     "manage_app",
+    "ports",
     "search_artifacts",
     "update_artifact",
     "upload_media_chunk",

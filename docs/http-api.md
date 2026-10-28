@@ -70,6 +70,9 @@ curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts/bul
 | `PUT /api/apps/{id}/env` | `{vars: {NAME: "value" or null}}` | Backend variables and secrets |
 | `POST /api/apps/{id}/shares`, `DELETE /api/app-shares/{token}` | `{version, read_only}` (0 follows live) | Public app links |
 | `GET /api/apps/guide` | | The build contract as text |
+| `GET /api/ports?host=` | | The port registry: `claims` (by host, port and protocol) and `hosts`, every machine name in use ([ports.md](ports.md)) |
+| `POST /api/ports` | `{host, port, from, protocol, service, owner, note}` | Claim a port (`201`), or update the claim the same service holds (`200`). Without `port`, the lowest free one at or above `from`. A port another service holds is `409` with `code: "port_taken"`, `holder` and `next_free`. `owner` defaults to the agent token's name |
+| `DELETE /api/ports/{host}/{port}?protocol=` | | Release a claim (`protocol` defaults to `tcp`); `{released}` says whether there was one |
 | `/run/{id}/{live or n}/…`, `/p/{token}/…` | | An app version's pages, and its backend under `api/` |
 
 `POST` and `PUT /api/artifacts` accept `files` (`{"path": "content"}`, with `null` removing a file on update) and edits with `file`. `GET /preview/{id}?version=N` renders a saved version in a sandbox; a version with files redirects to `/preview/{id}/{N}/`, which serves the page with its files beneath it. `GET /view/{id}` is the full-page view. `GET /healthz` is a process health check. With sign-in on, the password and token endpoints need a signed-in browser: a token is refused with `403`, so a leaked token cannot make more or lock you out. `GET /login` is the login page. Browser live previews use `POST /api/previews` with `title`, `kind`, `content` and optional `files`, returning a one-use `url` that expires after two minutes (with files, a directory URL readable until it expires). Preview drafts are ephemeral and do not enter artifact history.
