@@ -120,6 +120,27 @@ try {
   await expect(
     page.getByRole("heading", { name: "A home for things you make." }),
   ).toBeVisible();
+  // Installed from the menu, the workspace should open as its own app rather than in a
+  // browser window with a toolbar over it: that needs a manifest with the fields and icons
+  // Chrome asks for, served as JSON, and icons that really load.
+  const manifest = await page.evaluate(async () => {
+    const href = document.querySelector('link[rel="manifest"]')?.getAttribute("href");
+    if (!href) return null;
+    const res = await fetch(href);
+    const m = await res.json();
+    const icons = [];
+    for (const i of m.icons)
+      icons.push({ ...i, type: (await fetch(i.src)).headers.get("content-type") });
+    return { ...m, contentType: res.headers.get("content-type"), icons };
+  });
+  assert.equal(manifest?.display, "standalone", "the manifest asks for a window of its own");
+  assert.ok(manifest.start_url, "the manifest says where the app opens");
+  assert.match(manifest.contentType, /application\/manifest\+json/, "the manifest's type");
+  for (const [size, purpose] of [["192x192", "any"], ["512x512", "any"], ["512x512", "maskable"]]) {
+    const icon = manifest.icons.find((i) => i.sizes === size && i.purpose === purpose);
+    assert.ok(icon, `a ${size} ${purpose} icon`);
+    assert.equal(icon.type, "image/png", `the ${size} ${purpose} icon's type`);
+  }
   await mkdir("test-results", { recursive: true });
   await page.screenshot({
     path: "test-results/welcome-desktop.png",
@@ -1234,7 +1255,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   // The "Broken" artifact errors on purpose, including in its home-page thumbnail.
   assert.deepEqual(errors.filter((e) => !e.includes("missingFunction")), [], "browser runtime errors");
   console.log(
-    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, commenting on the preview (comment mode, pins, quoted selections), and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
+    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, commenting on the preview (comment mode, pins, quoted selections), installing as an app (manifest, icons), and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
   );
 } catch (e) {
   if (page) {

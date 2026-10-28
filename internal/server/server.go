@@ -326,6 +326,15 @@ func (s *Server) build() http.Handler {
 				w.Header().Set("ETag", tag)
 			}
 		}
+		// The manifest's type is not in every platform's mime table, and a phone that
+		// installed the app should pick up changes to it, so say both and revalidate.
+		if r.URL.Path == "/manifest.webmanifest" {
+			w.Header().Set("Content-Type", "application/manifest+json")
+			if tag := s.etag(r.URL.Path); tag != "" {
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("ETag", tag)
+			}
+		}
 		files.ServeHTTP(w, r)
 	})
 	return s.guard(mux)

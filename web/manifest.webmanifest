@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "shartifacts",
+  "short_name": "shartifacts",
+  "description": "A home for things you make: artifacts, apps and media on your own network.",
+  "start_url": "/artifacts",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9f8f6",
+  "theme_color": "#f9f8f6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

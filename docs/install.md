@@ -64,6 +64,12 @@ WantedBy=multi-user.target
 
 The `.env` here uses the program's own variables (`SHARTIFACTS_LISTEN=127.0.0.1:8080`, `SHARTIFACTS_DATA=/opt/shartifacts/data`, …). [configuration.md](configuration.md) lists them.
 
+## Install it on your phone
+
+The workspace is a web app with a manifest and icons, so a phone installs it as an app instead of a bookmark. In Chrome on Android, **⋮ → Install app** (or **Add to Home screen**) puts it in the drawer and it opens in its own window, without a browser toolbar over it; it starts at the library. On iPhone and iPad, **Share → Add to Home Screen** from Safari does the same, using the touch icon.
+
+This needs an `https://` name with a real certificate, as [modes.md](modes.md) describes: over plain `http://` browsers keep the old behaviour and add a shortcut that opens inside a browser tab. If you installed the workspace before this manifest existed, remove that entry from your home screen and install it again — an old shortcut keeps the browser toolbar.
+
 ## Upgrade
 
 ```sh
@@ -125,6 +131,7 @@ Files are written to a temporary file, synced, and renamed into place, so a cras
 | An agent gets `401 unauthenticated` | Sign-in is on: give the agent a token ([agents.md](agents.md#with-sign-in-on)). A revoked token gets the same answer. |
 | `permission denied` on start | The data folder is not writable by UID 10001: `sudo chown -R 10001:10001 data`. |
 | Can't reach it from another device | `SHARTIFACTS_BIND` is `127.0.0.1` (the default). Set it to `0.0.0.0` or the LAN IP, and check the host firewall. |
+| The installed app opens with a browser toolbar over it | It was installed as a shortcut, either over plain `http://` or before the workspace had a manifest. Remove it from the home screen and install it again from the `https://` name. |
 | Apps: "app runner unreachable" | The runner starts after shartifacts is healthy. Wait a minute, then run `docker compose logs runner`. |
 | Apps: the sandbox says "None" or "unconfined" | Not Linux, or the data folder is on FUSE (Unraid `/mnt/user`, Docker Desktop). See the platform notes. |
 | Share link opens a `404` page from your proxy | The edge does not forward that path. Allow `/s/`, `/p/` and `/vendor/` ([sharing.md](sharing.md#verify)). |
