@@ -31,9 +31,9 @@ KEEP_IMAGES=${KEEP_IMAGES:-5}
   exit 1
 }
 
-SHA=$(git -C "$SRC" rev-parse --short HEAD)
-REV=$(git -C "$SRC" rev-parse HEAD)
-SUBJECT=$(git -C "$SRC" log -1 --pretty=%s)
+SHA=${SHA:-$(git -C "$SRC" rev-parse --short HEAD)}
+REV=${REV:-$(git -C "$SRC" rev-parse HEAD)}
+SUBJECT=${SUBJECT:-$(git -C "$SRC" log -1 --pretty=%s)}
 echo "deploying $SHA — $SUBJECT"
 
 ENV_BEFORE=$(sha256sum "$DEPLOY_DIR/.env" | cut -d' ' -f1)
