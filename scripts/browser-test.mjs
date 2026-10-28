@@ -68,10 +68,22 @@ async function frameInteractive() {
     })
     .toBe(true);
 }
-// An open artifact fills the workspace; its title, actions, views and versions open on demand.
+// An open artifact fills the workspace under its toolbar; ⓘ opens its details, versions and
+// actions in a panel beside it.
 async function details() {
   if ((await page.locator("#toggle-details").getAttribute("aria-expanded")) !== "true")
     await page.locator("#toggle-details").click();
+}
+// The view switch is in the toolbar, or at the top of the details panel on a phone.
+async function view(name) {
+  const button = page.locator(`button[data-view="${name}"]`);
+  if (!(await button.isVisible())) await details();
+  await button.click();
+}
+// Editing starts from the Source pane.
+async function editSource() {
+  if (!(await page.locator("#edit").isVisible())) await view("split");
+  await page.getByRole("button", { name: "Edit source", exact: true }).click();
 }
 // Media, agents and sign-in live in the menu at the foot of the sidebar.
 async function sidebarMenu(name) {
@@ -159,8 +171,7 @@ try {
     frame.getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   const id = page.url().split("/a/")[1];
-  await details();
-  await page.getByRole("button", { name: "Edit source", exact: true }).click();
+  await editSource();
   const updated = `<h1 id="test">Draft preview</h1><button onclick="this.textContent='Clicked'">Try me</button>`;
   await page
     .getByRole("textbox", { name: "Artifact source", exact: true })
@@ -190,7 +201,9 @@ try {
   await expect(
     frame.getByRole("heading", { name: "A moment of focus." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(page.locator("#old-version")).toContainText("Viewing v1 of 2");
+  await page.getByRole("button", { name: "Restore this version", exact: true }).click();
+  await expect(page.locator("#old-version")).toBeHidden();
   await expect(page.locator("#versions")).toHaveValue("3");
   const download = await fetch(
     base + `/api/artifacts/${id}/download?version=2`,
@@ -282,7 +295,7 @@ try {
   assert.deepEqual(
     await page.locator("body").evaluate((el) => ({
       canvas: getComputedStyle(el).backgroundColor,
-      primary: getComputedStyle(document.querySelector("#new")).backgroundColor,
+      primary: getComputedStyle(document.querySelector("#share-toggle")).backgroundColor,
     })),
     { canvas: "rgb(249, 248, 246)", primary: "rgb(181, 82, 59)" },
   );
@@ -306,14 +319,14 @@ try {
   await page.locator("#toggle-sidebar-menu").click();
   await page.locator('[data-palette-choice="harbour"]').click();
   await expect(page.locator("#sidebar-menu")).toBeVisible();
-  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(44, 93, 143)");
+  await expect(page.locator("#share-toggle")).toHaveCSS("background-color", "rgb(44, 93, 143)");
   await expect(frame.locator(".primary")).toHaveCSS("background-color", "rgb(181, 82, 59)");
   await page.goto(base + "/a/" + styledArtifact.id);
-  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(44, 93, 143)");
+  await expect(page.locator("#share-toggle")).toHaveCSS("background-color", "rgb(44, 93, 143)");
   await page.locator("#toggle-sidebar-menu").click();
   await expect(page.locator('[data-palette-choice="harbour"]')).toHaveAttribute("aria-pressed", "true");
   await page.locator('[data-palette-choice="terracotta"]').click();
-  await expect(page.locator("#new")).toHaveCSS("background-color", "rgb(181, 82, 59)");
+  await expect(page.locator("#share-toggle")).toHaveCSS("background-color", "rgb(181, 82, 59)");
   await page.keyboard.press("Escape");
   await expect
     .poll(() => frame.locator("#direct-video").evaluate((v) => v.readyState))
@@ -322,8 +335,7 @@ try {
   await expect
     .poll(() => frame.locator("#direct-video").evaluate((v) => v.currentTime))
     .toBeGreaterThan(0.1);
-  await details();
-  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await view("source");
   await expect(page.locator(".source-pane")).toHaveCSS(
     "background-color",
     "rgb(28, 26, 25)",
@@ -529,8 +541,7 @@ try {
   await expect
     .poll(() => frame.locator("#sound").evaluate((a) => a.currentTime))
     .toBeGreaterThan(0);
-  await details();
-  await page.locator("#edit").click();
+  await editSource();
   await page
     .locator("#source")
     .fill(
@@ -586,8 +597,7 @@ try {
   });
   assert.equal(conflict.isError, true);
   // A dirty browser editor must survive an agent update without overwriting either version.
-  await details();
-  await page.getByRole("button", { name: "Edit source", exact: true }).click();
+  await editSource();
   await page
     .getByRole("textbox", { name: "Artifact source", exact: true })
     .fill(reactSource.replace("Count {n}", "Browser {n}"));
@@ -658,9 +668,8 @@ try {
     );
   }
   // Source/Split return intact, even when the browser denies or lacks native fullscreen.
-  await details();
-  for (const view of ["source", "split"]) {
-    await page.locator(`button[data-view="${view}"]`).click();
+  for (const name of ["source", "split"]) {
+    await view(name);
     await immersive();
   }
   await page.evaluate(() => { document.querySelector("#panes").requestFullscreen = undefined; });
@@ -691,10 +700,15 @@ try {
     };
     await checkControls();
     assert.ok(await page.locator("#preview").evaluate(el => el.getBoundingClientRect().height / innerHeight > 0.85), `preview fills the workspace at ${width}`);
-    await expect(page.locator("#artifact-name")).toBeHidden();
+    // The title stays in the toolbar until a phone needs the room for the buttons.
+    await expect(page.locator("#artifact-name")).toBeVisible({ visible: width > 480 });
+    await expect(page.locator("#info-panel")).toBeHidden();
     await page.locator("#toggle-details").click();
+    await expect(page.locator("#about")).toBeVisible();
+    await expect(page.locator("button[data-view=changes]")).toBeVisible();
     await checkControls();
     await page.locator("#toggle-details").click();
+    await expect(page.locator("#info-panel")).toBeHidden();
     await page.locator("#comments-link").click();
     await expect(page.getByRole("textbox", { name: "New comment" })).toBeFocused();
     await page.keyboard.press("Escape");
@@ -729,7 +743,8 @@ try {
   );
   assert.ok(!(await api("/api/artifacts")).some((a) => a.title === "BAD"));
   // Import form, search, duplicate, delete, and mobile layout.
-  await page.getByRole("button", { name: "＋ New artifact N" }).click();
+  // Agents make most artifacts; making one by hand is in the menu at the foot of the sidebar.
+  await sidebarMenu(/New artifact/);
   await page.locator("#import-file").setInputFiles({
     name: "imported.md",
     mimeType: "text/markdown",
@@ -741,7 +756,6 @@ try {
     frame.getByRole("heading", { name: "Imported file" }),
   ).toBeVisible();
   await details();
-  await page.getByRole("button", { name: "More artifact actions" }).click();
   await page
     .getByRole("button", { name: "Duplicate artifact", exact: true })
     .click();
@@ -790,7 +804,7 @@ try {
   await details();
   await expect(page.locator("#artifact-tags")).toHaveText("#finance");
   await expect(page.locator("#related-list .related-item").first()).toContainText("Household budget");
-  await page.getByRole("button", { name: "Edit source", exact: true }).click();
+  await editSource();
   const offered = page.locator("#tag-suggestions button").first();
   const added = (await offered.textContent()).replace(/^\+ /, "");
   await offered.click();
@@ -856,11 +870,7 @@ try {
     { width: 390, height: 500 },
   ]) {
     await page.setViewportSize(size);
-    if (await page.locator("#toggle-details").getAttribute("aria-expanded") === "false")
-      await page.locator("#toggle-details").click();
-    await page
-      .getByRole("button", { name: "Edit source", exact: true })
-      .click();
+    await editSource();
     await expect(
       page.getByRole("button", { name: "Save version", exact: true }),
     ).toBeVisible();
@@ -899,7 +909,6 @@ try {
   await page.locator("#media-dialog [data-close]").click();
   await page.locator("#close-library").click();
   await details();
-  await page.getByRole("button", { name: "More artifact actions" }).click();
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Delete artifact & history" }).click();
   await expect(
@@ -1069,7 +1078,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect(page.locator(".thread .comment").nth(1)).toContainText("Added in v3.");
   await page.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(page.locator("#comments-link")).toHaveText("Comments");
-  await page.locator("#close-comments").click();
+  await page.locator("#close-panel").click();
   // Comments on the preview itself: comment mode picks what is clicked instead of using
   // it, the thread keeps what it points at for agents, and its numbered pin opens it.
   await frameInteractive();
@@ -1095,7 +1104,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect(page.locator(".thread.flash")).toContainText("Label it Add to total.");
   await expect(page.locator(".thread-target").first()).toContainText("On button#add");
   await expect(page.locator(".thread.unplaced")).toHaveCount(0);
-  await page.locator("#close-comments").click();
+  await page.locator("#close-panel").click();
   // Outside comment mode the page works as usual, and selected text offers a chip that quotes it.
   await frame.locator("#v2").evaluate((h) => getSelection().selectAllChildren(h));
   await frame.locator("shartifacts-overlay .chip").click();
@@ -1108,7 +1117,6 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect(pins).toHaveCount(0);
   // Pinning lifts an artifact to the top of the library and the home gallery.
   await details();
-  await page.getByRole("button", { name: "More artifact actions" }).click();
   await page.getByRole("button", { name: "Pin to top of library" }).click();
   await expect(page.locator("#library .library-item").first()).toContainText("PINNED");
   await page.goto(base + "/artifacts");
@@ -1119,8 +1127,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   ).toHaveText("10");
   // Changes: the edit an agent made to the storage tool, line by line.
   await page.goto(base + "/a/" + tool.id);
-  await details();
-  await page.getByRole("button", { name: "Changes", exact: true }).click();
+  await view("changes");
   await expect(page.locator("#changes-title")).toHaveText("V2 CHANGES · +1 −1");
   await expect(page.locator(".diff-line.ins")).toContainText('<h1 id="v2">v2</h1>');
   await page.getByRole("button", { name: "Preview", exact: true }).click();
@@ -1163,8 +1170,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await frameInteractive();
   await frame.locator("#about").click();
   await expect(frame.locator("#t")).toHaveText("About us");
-  await details();
-  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await view("source");
   await expect(page.locator("#file-select option")).toHaveText(["index.html (page)", "about.html", "css/site.css", "js/app.js", "js/data.js", "team.json"]);
   await page.locator("#file-select").selectOption("team.json");
   await expect(page.getByRole("textbox", { name: "Artifact source", exact: true })).toHaveValue('["Sam","Ada"]');

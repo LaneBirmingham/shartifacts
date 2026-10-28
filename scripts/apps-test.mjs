@@ -286,9 +286,9 @@ try {
   // The artifacts workspace lives on at /artifacts, a click away.
   await page.getByRole("link", { name: "Artifacts", exact: true }).click();
   await expect(page.getByRole("heading", { name: "A home for things you make." })).toBeVisible();
-  // Apps sits in the menu at the foot of the sidebar.
-  await page.locator("#toggle-sidebar-menu").click();
-  await page.locator("#to-apps").click();
+  // The same switch, in the same corner beside the logo, goes back to Apps.
+  await expect(page.locator('.mode-switch a[aria-current="page"]')).toHaveText("Artifacts");
+  await page.getByRole("link", { name: "Apps", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Apps that run." })).toBeVisible();
 
   // Close the tab, delete with confirmation.

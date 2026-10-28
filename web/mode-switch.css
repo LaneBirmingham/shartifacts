@@ -1,0 +1,50 @@
+/* Artifacts and apps are two sides of one product. The switch between them sits by the logo
+   on both pages, in the same corner with the same look, and lights the side you are on, so
+   going there and coming back is the same move. */
+.mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+.mode-switch a {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: 500 13px/1.2 var(--font-body);
+  letter-spacing: 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mode-switch a[aria-current="page"] {
+  background: var(--canvas);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(26 23 22 / 10%);
+}
+.mode-switch svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+/* In the Apps bar on a phone the icons carry it, leaving room for open apps; the words stay
+   for screen readers. The library drawer has room for them. */
+@media (max-width: 480px) {
+  .hub-bar .mode-switch a {
+    padding: 6px 9px;
+  }
+  .hub-bar .mode-switch .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

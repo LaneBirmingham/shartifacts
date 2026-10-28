@@ -213,6 +213,15 @@ code {
   width: 2px;
   background: var(--primary);
 }
+/* The switch beside the logo already says Apps, so the home tab is the house alone. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .hub-actions {
   display: flex;
   align-items: center;
