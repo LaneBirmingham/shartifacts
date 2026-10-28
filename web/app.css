@@ -1222,6 +1222,125 @@ iframe {
   justify-content: flex-end;
   gap: 6px;
 }
+/* Commenting on the preview itself: comment mode, its hint, the composer beside what was
+   picked, and threads numbered as their pins in the artifact are. */
+.preview-pane {
+  position: relative;
+}
+#comment-mode {
+  gap: 6px;
+  align-items: center;
+}
+#comment-mode[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.comment-hint {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  width: max-content;
+  margin: 0 auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--canvas);
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+  /* Clicks pass through to the artifact (and any pin) beneath, except on Done. */
+  pointer-events: none;
+}
+.comment-hint button {
+  pointer-events: auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+.comment-popover {
+  position: fixed;
+  z-index: 30;
+  width: min(340px, calc(100vw - 16px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+.comment-popover textarea {
+  width: 100%;
+  resize: vertical;
+}
+.comment-popover .comment-quote {
+  margin: 0;
+}
+.pointed-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thread-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+button.thread-target:hover .thread-target-name {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.thread-target-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-unplaced {
+  display: none;
+  white-space: nowrap;
+}
+.thread.unplaced .thread-unplaced {
+  display: inline;
+}
+.pin-badge {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px 11px 11px 2px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+.thread:hover,
+.thread.flash {
+  border-color: var(--primary);
+}
+.thread.flash {
+  animation: thread-flash 1.6s ease-out;
+}
+@keyframes thread-flash {
+  from { box-shadow: 0 0 0 4px rgb(181 82 59 / 35%); }
+  to { box-shadow: 0 0 0 4px rgb(181 82 59 / 0%); }
+}
 .notice {
   padding: 10px 15px;
   background: var(--surface-card);
@@ -1745,6 +1864,10 @@ body:has(#artifact:not([hidden])) .comments {
   z-index: 9;
 }
 body:not(.comments-open) .comments { display: none; }
+/* On a wide screen the open threads sit beside the artifact rather than over its pins. */
+@media (min-width: 1280px) {
+  body.comments-open:has(#artifact:not([hidden])):not(.immersive) .workspace { padding-right: 460px; }
+}
 .comments h2 { font-size: 22px; }
 #close-comments { padding: 4px 10px; font-size: 16px; }
 @media (max-width: 900px) {
@@ -1812,4 +1935,8 @@ body:not(.comments-open) .comments { display: none; }
 }
 @media (max-width: 420px) {
   body:has(#artifact:not([hidden])) .topbar .viewer-chip { display: none; }
+}
+@media (max-width: 900px) {
+  #comment-mode .label { display: none; }
+  .comment-hint { font-size: 12px; }
 }

@@ -268,7 +268,7 @@ function hostArtifactFrames(frameFor, hooks = {}) {
     comments: {
       openComposer: (frame, st, a) => {
         if (!hooks.compose) throw fail("unavailable", "open the artifact in the workspace to comment");
-        return { opened: hooks.compose(a.quote, a.anchor) !== false };
+        return { opened: hooks.compose(a, frame) !== false };
       },
       create: async (frame, st, a) => {
         const author = (await calls.user.people())[viewerId()]?.name || "you";

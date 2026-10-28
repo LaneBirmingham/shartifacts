@@ -294,7 +294,8 @@
   const cssPath = (el) => {
     const parts = [];
     for (let n = el; n && n.nodeType === 1 && n !== document.documentElement; n = n.parentElement) {
-      if (n.id && /^[A-Za-z][\w-]*$/.test(n.id)) {
+      // An id is the shortest path, but only when nothing else on the page shares it.
+      if (n.id && /^[A-Za-z][\w-]*$/.test(n.id) && document.querySelectorAll("#" + n.id).length === 1) {
         parts.unshift("#" + n.id);
         break;
       }
@@ -312,8 +313,8 @@
       const el = target?.element,
         range = target?.range;
       if (!(el instanceof Element && el.isConnected) && !(range instanceof Range)) return Promise.reject(err("invalid", "target must be {element} or {range} in this document"));
-      const quote = (range ? range.toString() : el.textContent || "").trim().slice(0, 500);
-      return call("comments", "openComposer", { quote, anchor: cssPath(el || range.commonAncestorContainer.parentElement) });
+      // The workspace opens its composer beside what the page pointed at, which stays marked.
+      return call("comments", "openComposer", overlay.point(range ? null : el, range || null));
     },
     anchorFor: async (el) => {
       if (!(el instanceof Element) || !el.isConnected) throw err("invalid", "anchorFor takes an element in this document");
@@ -331,6 +332,350 @@
       throw err("not_granted", "customAnchors is not declared for this artifact");
     },
   });
+
+  // ---- pointing at the page to comment on it -----------------------------------------
+  // The workspace lets people comment on part of a preview, as Claude's artifacts do. It
+  // drives this overlay with `shartifacts-comments` messages: whether commenting is on
+  // here, whether comment mode is (a click then picks the element under it rather than
+  // using it), and the open threads to pin, as {id, n, anchor, quote}. What is picked,
+  // by a click in comment mode or the Comment chip over selected text, goes back as
+  // `shartifacts-comment-pick` with its anchor (a CSS path), quote, opening tag and box,
+  // and the workspace opens its composer there. Pins open their thread
+  // (`shartifacts-comment-open`). Everything drawn lives in a shadow root beside <body>,
+  // so the artifact's DOM, selectors and styles never see it, and nothing is drawn until
+  // the workspace asks: thumbnails, share links and pages opened alone get none of it.
+  // These messages only ever ask the workspace to show something; it decides the rest.
+  const overlay = (() => {
+    const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
+    const say = (message) => embedded && parent.postMessage(message, "*");
+    let host = null,
+      ui = null,
+      on = false,
+      mode = false,
+      pins = [],
+      active = "",
+      located = [],
+      picked = null,
+      flash = null,
+      flashTimer = 0,
+      missing = "",
+      pickedBox = "",
+      queued = 0,
+      relocated = 0;
+    // The text an element stands for: its words, or the label of an image or icon.
+    const textOf = (el) => norm(el.textContent) || norm(el.getAttribute("aria-label") || el.getAttribute("alt") || el.getAttribute("title"));
+    // The opening tag, with the attributes that find it in source: <button class="primary">.
+    const describe = (el) => {
+      let tag = "<" + el.tagName.toLowerCase();
+      for (const name of ["id", "class", "name", "type", "role", "aria-label", "alt", "title", "href", "src"]) {
+        const v = el.getAttribute(name);
+        if (v !== null) tag += ` ${name}="${norm(v).replace(/"/g, "'").slice(0, 80)}"`;
+      }
+      return (tag.length > 480 ? tag.slice(0, 480) + "…" : tag) + ">";
+    };
+    const box = (r) => ({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+    const elementOf = (n) => (n?.nodeType === 1 ? n : n?.parentElement) || document.body;
+    const editable = (n) => !!elementOf(n)?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])");
+    // The Range that a quote covers under scope, matching whitespace loosely.
+    const findText = (scope, quote) => {
+      if (!scope || !quote) return null;
+      const walk = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT),
+        chars = [],
+        at = [];
+      let space = true;
+      for (let n; (n = walk.nextNode()); ) {
+        if (n.parentElement?.closest("script, style, template")) continue;
+        const d = n.data;
+        for (let i = 0; i < d.length; i++) {
+          const blank = /\s/.test(d[i]);
+          if (blank && space) continue;
+          chars.push(blank ? " " : d[i]);
+          at.push(n, i);
+          space = blank;
+        }
+        if (chars.length > 1000000) return null;
+      }
+      const i = chars.join("").indexOf(quote);
+      if (i < 0) return null;
+      const end = i + quote.length - 1,
+        r = document.createRange();
+      r.setStart(at[2 * i], at[2 * i + 1]);
+      r.setEnd(at[2 * end], at[2 * end + 1] + 1);
+      return r;
+    };
+    // Finds what a thread points at in the page as it is now: the element its anchor names
+    // when that still holds the quoted words, or else wherever the words went. A quote
+    // shorter than its element's text was selected text, which is marked as a range.
+    const locate = (p) => {
+      const quote = norm(p.quote);
+      let el = null;
+      try {
+        el = p.anchor ? document.querySelector(p.anchor) : null;
+      } catch {}
+      if (el && (!quote || textOf(el).includes(quote))) {
+        if (!quote || textOf(el).slice(0, 500) === quote) return { el };
+        const range = findText(el, quote);
+        return range ? { el, range } : { el };
+      }
+      const range = quote && findText(document.body, quote);
+      if (!range) return el ? { el } : null;
+      const near = elementOf(range.commonAncestorContainer);
+      return textOf(near).slice(0, 500) === quote ? { el: near } : { el: near, range };
+    };
+    const place = (target, r) => Object.assign(target.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+    const shown = (r) => r && (r.width || r.height) && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+    const rectOf = (t) => (t.range ? t.range.getBoundingClientRect() : t.el.getBoundingClientRect());
+    // A pin sits at the end of what an element shows, so a heading's is beside its words
+    // rather than at the far edge of the page; controls, media and drawings keep their box.
+    const pinRect = (t) => {
+      const r = rectOf(t);
+      if (t.range || t.el instanceof SVGElement || /^(BUTTON|INPUT|SELECT|TEXTAREA|IMG|VIDEO|CANVAS|IFRAME)$/.test(t.el.tagName)) return r;
+      const inner = document.createRange();
+      inner.selectNodeContents(t.el);
+      const c = inner.getBoundingClientRect();
+      return c.width && c.height && c.left >= r.left - 1 && c.right <= r.right + 1 && c.top >= r.top - 1 ? c : r;
+    };
+    const sheets = (() => {
+      try {
+        const marks = new CSSStyleSheet(),
+          cursor = new CSSStyleSheet();
+        marks.replaceSync("::highlight(shartifacts-comment){background-color:rgb(250 204 21 / .35)}::highlight(shartifacts-comment-active){background-color:rgb(250 204 21 / .75)}");
+        cursor.replaceSync("*{cursor:crosshair!important}");
+        return { marks, cursor };
+      } catch {
+        return null;
+      }
+    })();
+    const build = () => {
+      host = document.createElement("shartifacts-overlay");
+      host.style.cssText = "all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:visible;z-index:2147483647;display:block;pointer-events:none";
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = `<style>
+*{box-sizing:border-box}
+.box{position:fixed;pointer-events:none;border-radius:4px;display:none}
+.hover{outline:2px solid #b5523b;outline-offset:2px;background:rgb(181 82 59 / .08)}
+.hover span{position:absolute;left:-2px;bottom:100%;margin-bottom:4px;background:#b5523b;color:#fff;font:600 11px/1.6 Inter,system-ui,sans-serif;padding:0 6px;border-radius:4px;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.picked{outline:2px solid #b5523b;outline-offset:2px;background:rgb(181 82 59 / .14)}
+.flash{outline:3px solid #f5b400;outline-offset:3px;background:rgb(250 204 21 / .2);transition:opacity .4s}
+button{all:unset;pointer-events:auto;position:fixed;cursor:pointer!important;font:600 12px/1 Inter,system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / .25)}
+.pin{display:none;width:24px;height:24px;border-radius:12px 12px 12px 2px;background:#b5523b;color:#fff;border:2px solid #fff;text-align:center;line-height:20px}
+.pin.active{background:#7c2f1e;transform:scale(1.2)}
+.pin:focus-visible,.chip:focus-visible{outline:2px solid #1a1716;outline-offset:2px}
+.chip{display:none;background:#1a1716;color:#fff;padding:7px 11px;border-radius:999px}
+</style><div class="box hover"><span></span></div><div class="box picked"></div><div class="box flash"></div><button class="chip" type="button">Comment</button><div class="pins"></div>`;
+      const $ = (s) => root.querySelector(s);
+      ui = { hover: $(".hover"), label: $(".hover span"), picked: $(".picked"), flash: $(".flash"), chip: $(".chip"), pins: $(".pins"), byId: new Map() };
+      // The chip keeps the selection it is about and the pins keep their clicks to themselves.
+      for (const type of ["pointerdown", "mousedown"])
+        ui.chip.addEventListener(type, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      ui.chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const sel = getSelection();
+        if (sel.rangeCount && !sel.isCollapsed) pick(null, sel.getRangeAt(0).cloneRange());
+      });
+      ui.pins.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = e.target.closest?.(".pin")?.dataset.id;
+        if (id) say({ type: "shartifacts-comment-open", id });
+      });
+      if (sheets) document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheets.marks, sheets.cursor];
+      new MutationObserver((records) => {
+        if (!pins.length && !picked) return;
+        if (records.some((r) => r.type !== "attributes")) relocate();
+        else schedule();
+      }).observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+      document.documentElement.addEventListener("mouseleave", () => (ui.hover.style.display = "none"));
+      addEventListener("scroll", schedule, { capture: true, passive: true });
+      addEventListener("resize", schedule);
+      // Animations and transitions move things without telling anyone.
+      setInterval(() => (located.length || picked) && schedule(), 500);
+    };
+    const schedule = () => {
+      if (!queued) queued = requestAnimationFrame(draw);
+    };
+    // Finding threads again after the page changes costs more than drawing, so at most
+    // twice a second however often the page changes.
+    const relocate = (now) => {
+      if (!now) {
+        if (!relocated) relocated = setTimeout(() => relocate(true), 500);
+        return;
+      }
+      clearTimeout(relocated);
+      relocated = 0;
+      located = pins.map((p) => ({ p, ...(locate(p) || {}) }));
+      const gone = located.filter((t) => !t.el).map((t) => t.p.id).join(" ");
+      if (gone !== missing) say({ type: "shartifacts-comment-placed", missing: (missing = gone) ? gone.split(" ") : [] });
+      schedule();
+    };
+    const draw = () => {
+      queued = 0;
+      if (!host) return;
+      if (!host.isConnected) document.documentElement.append(host);
+      if (sheets) sheets.cursor.disabled = !mode;
+      const marks = [],
+        lit = [];
+      const seen = new Map();
+      for (const t of located) {
+        let pin = ui.byId.get(t.p.id);
+        if (!pin) {
+          pin = document.createElement("button");
+          pin.type = "button";
+          pin.className = "pin";
+          pin.dataset.id = t.p.id;
+          ui.pins.append(pin);
+          ui.byId.set(t.p.id, pin);
+        }
+        pin.textContent = t.p.n;
+        pin.setAttribute("aria-label", `Open comment ${t.p.n}`);
+        pin.classList.toggle("active", t.p.id === active);
+        const r = t.el?.isConnected && pinRect(t);
+        if (t.range) (t.p.id === active ? lit : marks).push(t.range);
+        if (!shown(r)) {
+          pin.style.display = "none";
+          continue;
+        }
+        // Threads on the same thing fan out rather than hiding each other.
+        const key = Math.round(r.right) + "," + Math.round(r.top),
+          k = seen.get(key) || 0;
+        seen.set(key, k + 1);
+        Object.assign(pin.style, {
+          display: "block",
+          left: Math.max(4, Math.min(innerWidth - 28, r.right - 4 - k * 26)) + "px",
+          top: Math.max(4, Math.min(innerHeight - 28, r.top - 14)) + "px",
+        });
+      }
+      for (const [id, pin] of ui.byId)
+        if (!located.some((t) => t.p.id === id)) {
+          pin.remove();
+          ui.byId.delete(id);
+        }
+      // What the composer is about stays marked until it closes.
+      const pr = picked?.el.isConnected && rectOf(picked);
+      if (picked?.range) lit.push(picked.range);
+      if (pr && !picked.range) place(ui.picked, pr);
+      ui.picked.style.display = pr && !picked.range ? "block" : "none";
+      const next = pr ? JSON.stringify(box(pr)) : "";
+      if (picked && next && next !== pickedBox) say({ type: "shartifacts-comment-moved", rect: box(pr) });
+      pickedBox = next;
+      const fr = flash?.isConnected && flash.getBoundingClientRect();
+      if (fr) place(ui.flash, fr);
+      ui.flash.style.display = fr ? "block" : "none";
+      if (window.Highlight && CSS.highlights) {
+        CSS.highlights.set("shartifacts-comment", new Highlight(...marks));
+        CSS.highlights.set("shartifacts-comment-active", new Highlight(...lit));
+      }
+      chip();
+    };
+    // Outside comment mode, selected text offers a Comment chip below its last line.
+    const chip = () => {
+      const sel = getSelection(),
+        range = on && !mode && sel.rangeCount && !sel.isCollapsed && sel.getRangeAt(0);
+      const rects = range && norm(sel.toString()) && !editable(range.commonAncestorContainer) && range.getClientRects();
+      const last = rects && rects[rects.length - 1];
+      if (!last) return (ui.chip.style.display = "none");
+      Object.assign(ui.chip.style, {
+        display: "block",
+        left: Math.max(4, Math.min(innerWidth - 100, last.right - 40)) + "px",
+        top: Math.max(4, Math.min(innerHeight - 34, last.bottom + 8)) + "px",
+      });
+    };
+    // What a pick or openComposer sends: enough for the workspace to place its composer
+    // and for an agent to find the spot in the source.
+    const point = (el, range) => {
+      el = el || elementOf(range.commonAncestorContainer);
+      const quote = range ? norm(range.toString()) : textOf(el);
+      picked = { el, range };
+      schedule();
+      return { anchor: cssPath(el), quote: quote.slice(0, 500), element: describe(el), rect: box(range ? range.getBoundingClientRect() : el.getBoundingClientRect()), text: !!range };
+    };
+    const pick = (el, range) => {
+      say({ type: "shartifacts-comment-pick", ...point(el, range) });
+      // The mark shows what is being commented on from here, and the chip goes.
+      if (range) getSelection().removeAllRanges();
+    };
+    // In comment mode the page sees no pointer presses: they pick instead. Scrolling,
+    // keys and text selection still work. Runs before the artifact's own listeners, since
+    // this script loads first.
+    const target = (e) => {
+      const t = e.composedPath?.()[0] || e.target;
+      return t?.nodeType === 1 ? t : t?.parentElement;
+    };
+    const intercept = (e) => {
+      if (!mode || e.target === host) return;
+      e.stopImmediatePropagation();
+      const t = target(e);
+      if (e.type === "click") {
+        e.preventDefault();
+        const sel = getSelection();
+        if (sel.rangeCount && !sel.isCollapsed && norm(sel.toString())) pick(null, sel.getRangeAt(0).cloneRange());
+        else if (t && t !== document.documentElement && t !== document.body) pick(t, null);
+      } else if (e.type === "dragstart" || ((e.type === "pointerdown" || e.type === "mousedown") && t?.closest("input, textarea, select, button, label, [contenteditable]"))) e.preventDefault();
+    };
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "auxclick", "contextmenu", "dragstart", "touchstart", "touchend"])
+      addEventListener(type, intercept, { capture: true, passive: type.startsWith("touch") });
+    addEventListener(
+      "pointermove",
+      (e) => {
+        if (!mode || !host) return;
+        const t = e.target === host ? null : target(e);
+        const r = t && t !== document.documentElement && t !== document.body && t.getBoundingClientRect();
+        ui.hover.style.display = r ? "block" : "none";
+        if (!r) return;
+        place(ui.hover, r);
+        ui.label.textContent = t.tagName.toLowerCase() + (typeof t.className === "string" && t.className.trim() ? "." + t.className.trim().split(/\s+/)[0] : "");
+      },
+      { capture: true, passive: true },
+    );
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (!mode || e.key !== "Escape") return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        say({ type: "shartifacts-comment-exit" });
+      },
+      true,
+    );
+    document.addEventListener("selectionchange", () => on && host && schedule());
+    // Shows a thread's spot: the page scrolls to it, and pages that hide content (a deck's
+    // other slides, say) hear `shartifacts:reveal` on the element first.
+    const focus = (id) => {
+      const t = located.find((x) => x.p.id === id);
+      if (!t?.el?.isConnected) return;
+      if (!t.el.getClientRects().length) t.el.dispatchEvent(new CustomEvent("shartifacts:reveal", { bubbles: true }));
+      requestAnimationFrame(() => {
+        t.el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        flash = t.el;
+        clearTimeout(flashTimer);
+        flashTimer = setTimeout(() => {
+          flash = null;
+          schedule();
+        }, 1600);
+        schedule();
+      });
+    };
+    addEventListener("message", (e) => {
+      const d = e.data;
+      if (e.source !== parent || !embedded || !d) return;
+      if (d.type === "shartifacts-comment-focus") return focus(String(d.id));
+      if (d.type !== "shartifacts-comments") return;
+      on = !!d.enabled;
+      mode = on && !!d.mode;
+      active = typeof d.active === "string" ? d.active : "";
+      const next = on && Array.isArray(d.pins) ? d.pins.filter((p) => p && typeof p.id === "string").slice(0, 1000).map((p) => ({ id: p.id, n: String(p.n ?? ""), anchor: String(p.anchor || ""), quote: String(p.quote || "") })) : [];
+      if (!d.pending) picked = null;
+      if (!host && on) build();
+      if (!mode && ui) ui.hover.style.display = "none";
+      // Lighting another thread only redraws; new or changed threads are found again.
+      if (JSON.stringify(next) === JSON.stringify(pins) && located.length === pins.length) return schedule();
+      pins = next;
+      relocate(true);
+    });
+    return { point };
+  })();
 
   // ---- downloads ----------------------------------------------------------------------
   const DOWNLOAD_EXT = /\.(gif|png|jpe?g|webp|mp4|webm|mov|txt|json|md|docx|pptx|epub|csv|ttf|html|svg|pdf|xlsx|zip)$/i;
