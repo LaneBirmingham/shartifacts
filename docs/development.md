@@ -23,11 +23,44 @@ The server is plain `net/http` with no framework. Each feature registers its rou
 
 ## Branches and remotes
 
-`main` is the one long-lived branch. Work happens on a short-lived branch named for what it does (`feat/…`, `fix/…`, `docs/…`, or `t3/<slug>` when an agent made it), it is reviewed as a pull request, and the branch is deleted once it merges. `git branch -vv` should show `main` and whatever you are working on, nothing else: a leftover branch means its pull request is open or was merged without the branch being removed.
+`main` is the one long-lived branch. Work happens on a short-lived branch named for what it does (`feat/…`, `fix/…`, `docs/…`, or `t3/<slug>` when an agent made it), it is reviewed as a pull request on the Gitea server, and the branch is deleted once it merges. `git branch -vv` should show `main` and whatever you are working on, nothing else: a leftover branch means its pull request is open or was merged without the branch being removed. `main` takes no direct pushes — the branch protection there requires a pull request and a green `verify` job.
 
-`origin` is the canonical GitHub repository and the only remote that accepts pushes. If you keep a second copy, such as a self-hosted one on your own network, make it a **read-only pull mirror** of GitHub rather than a second place to push. One writer is what keeps the two copies from disagreeing about what `main` is, and a mirror that also accepts pushes is how a repository quietly ends up with two unrelated histories and a `main` that means something different depending on where you look. Add such a copy to a checkout as a fetch-only remote (`git remote add mirror <url>`) and never push to it.
+**Gitea is the canonical repository and the only remote that accepts pushes.** On a checkout it is `origin` (`http://192.168.0.222:3130/lanebirm/shartifacts.git`). `github` is the public copy and is a **push mirror configured on the Gitea server**: Gitea force-pushes to `github.com/LaneBirmingham/shartifacts` on every commit and on a ten-minute interval, so the public repository is a copy of this one and never a place to write. Its push URL is set to `DISABLED` so a stray `git push github` fails instead of quietly diverging — one writer is what keeps the two copies from disagreeing about what `main` is.
 
-Gitea, Forgejo and GitLab all offer this as a built-in mirror setting with an interval; prefer it to a cron job, so the copy stays a platform feature rather than a script of your own.
+Gitea, Forgejo and GitLab all offer the mirror as a built-in repository setting; prefer it to a cron job, so the copy stays a platform feature rather than a script of your own.
+
+## Continuous integration and deploying
+
+CI is Gitea Actions, in `.gitea/workflows/ci.yml` — deliberately not `.github/`, so mirroring the repository to GitHub cannot start a build there (GitHub does not read `.gitea/`, and Actions are switched off on that repository as well).
+
+- A branch or pull request runs `verify`: `gofmt -l .`, `go vet`, `go test -race`, a build, the three compose configurations, and `docker compose build`.
+- A push to `main` runs `verify` and then `deploy`, which needs it to pass. Deploy is `scripts/deploy-tower.sh`: it copies the checkout to the server's compose directory, refuses to run if `.env` would change, rebuilds both images, waits for both healthchecks, tags the images with the commit and writes the commit to `.deployed`.
+
+```sh
+tower ssh 'cat /mnt/user/projects/shartifacts/.deployed'      # what is live
+SHS=~/Dev/shartifacts; SRC=$SHS sh $SHS/scripts/deploy-tower.sh   # ship by hand, same script
+```
+
+Rolling back needs no rebuild — the previous images are kept:
+
+```sh
+tower ssh 'cd /mnt/user/projects/shartifacts && docker tag shartifacts:rollback shartifacts:local \
+  && docker tag shartifacts-runner:rollback shartifacts-runner:local && docker compose up -d --no-build'
+```
+
+Jobs run in `deploy/ci/Dockerfile` (`shartifacts-ci:local`, built on the server) on a runner registered to this repository alone, with the docker socket and the compose directory mounted. The browser and apps suites are not in CI — they need Chrome, and they stay a local gate before a push.
+
+## Releasing
+
+Versions are calendar versions: `YYYY.MM.DD`, which is also the git tag (`2026.10.28`), and `.2`, `.3` after it when more than one release ships in a day. `v0.1.0` and `v0.2.0` are history and stay as they are.
+
+A release is one commit on the work branch, before it merges, so the tagged commit is the one `main` ends up with:
+
+1. `CHANGELOG.md`: turn `## Unreleased` into `## YYYY.MM.DD`, newest first, and leave a fresh `## Unreleased` above it.
+2. `internal/server/mcp.go`: `appVersion` to the same date — it is what every connected agent sees in the MCP handshake.
+3. Commit as `docs(release): YYYY.MM.DD`, merge the pull request, then tag that commit and push the tag: `git tag -a 2026.10.28 -m "2026.10.28" && git push origin 2026.10.28`. The tag reaches GitHub with the mirror.
+
+The deploy that runs on the merge is the release.
 
 ## Build and test
 

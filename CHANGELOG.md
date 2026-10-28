@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **CI runs on the server and deploys it** ([docs/development.md](docs/development.md#continuous-integration-and-deploying)). Builds and tests run in Gitea Actions, on pull requests and on `main`; a green `main` is copied to the compose directory and rebuilt by `scripts/deploy-tower.sh`, which also records the running commit and keeps the previous images for a rollback that needs no rebuild. The public GitHub repository is now a read-only mirror of the Gitea one and carries no workflows at all.
+- **Versions are calendar versions** — `YYYY.MM.DD`, and `.2` for a second release the same day — in the git tag, in `CHANGELOG.md` and in the version an agent sees in the MCP handshake. `v0.1.0` and `v0.2.0` keep their names.
+
 ## 0.2.0 — 2026-10-22
 
 Cheaper context for every connected agent: the same tools, fields and behaviour, at about 4.2k tokens instead of 5.5k.

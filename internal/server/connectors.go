@@ -94,7 +94,7 @@ func (h *connectorHub) session(ctx context.Context, name string) (*mcp.ClientSes
 		return s, nil
 	}
 	h.mu.Unlock()
-	client := mcp.NewClient(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "shartifacts", Version: appVersion}, nil)
 	transport := &mcp.StreamableClientTransport{Endpoint: c.URL, HTTPClient: &http.Client{Timeout: 2 * time.Minute, Transport: headerTransport{c.Headers, http.DefaultTransport}}, MaxRetries: -1, DisableStandaloneSSE: true}
 	s, err := client.Connect(ctx, transport, nil)
 	if err != nil {
