@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2026.10.28
+
 ### Changed
 
 - **CI runs on the server and deploys it** ([docs/development.md](docs/development.md#continuous-integration-and-deploying)). Builds and tests run in Gitea Actions, on pull requests and on `main`; a green `main` is copied to the compose directory and rebuilt by `scripts/deploy-tower.sh`, which also records the running commit and keeps the previous images for a rollback that needs no rebuild. The public GitHub repository is now a read-only mirror of the Gitea one and carries no workflows at all.
