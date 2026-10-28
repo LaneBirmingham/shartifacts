@@ -43,13 +43,9 @@ jobs:
     needs: verify
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: shartifacts-ci
-    # The runner mounts the docker socket into every job, but a host directory only when the
-    # job asks for it: the deploy needs the compose directory itself, at the same absolute
-    # path the host uses, because compose resolves bind mounts against the daemon.
-    container:
-      image: shartifacts-ci:local
-      volumes:
-        - /mnt/user/projects/shartifacts:/mnt/user/projects/shartifacts
+    # The compose directory reaches this job through the runner's own container options
+    # (a `container:` block here has no effect with a `docker://` label): compose resolves
+    # bind mounts against the daemon, so the path has to be the host's absolute one.
     steps:
       - uses: actions/checkout@v4
         with:
