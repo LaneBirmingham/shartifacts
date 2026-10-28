@@ -140,6 +140,7 @@ func (s *Server) build() http.Handler {
 	s.shareRoutes(mux)
 	s.searchRoutes(mux)
 	s.appRoutes(mux)
+	s.portRoutes(mux)
 	s.authRoutes(mux)
 	mux.HandleFunc("GET /api/media", func(w http.ResponseWriter, r *http.Request) {
 		items, e := s.Store.ListMedia()
@@ -301,7 +302,7 @@ func (s *Server) build() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		scheme := s.clientScheme(r)
-		return s.mcpServer(scheme+"://"+r.Host, s.uploadPath(r))
+		return s.mcpServer(scheme+"://"+r.Host, s.uploadPath(r), agentName(r))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 12 << 20}))
 	files := http.FileServer(http.FS(s.Web))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

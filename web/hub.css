@@ -878,6 +878,87 @@ dialog label > input:not([type="radio"]):not([type="checkbox"]) {
   white-space: pre-wrap;
   margin-top: 6px;
 }
+.ports-heading {
+  margin-top: 72px;
+}
+.section-lede {
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 640px;
+  margin: -8px 0 20px;
+}
+.port-hosts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr));
+  align-items: start;
+  gap: 16px;
+}
+.port-host {
+  border-radius: var(--radius-xl);
+  background: var(--surface-card);
+  padding: 18px 22px 10px;
+  min-width: 0;
+}
+.port-host-name {
+  font: 400 21px/1.2 var(--font-display);
+  letter-spacing: -0.4px;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.port-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.port-table td {
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline);
+  vertical-align: top;
+}
+.port-number {
+  font: 500 13px var(--font-code);
+  color: var(--ink);
+  width: 1%;
+  padding-right: 16px !important;
+  white-space: nowrap;
+}
+.port-proto {
+  color: var(--muted);
+  font-weight: 400;
+}
+.port-service strong {
+  font-weight: 500;
+  color: var(--body-strong);
+  overflow-wrap: anywhere;
+}
+.port-service small {
+  display: block;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.port-owner {
+  color: var(--muted);
+  text-align: right;
+  padding-left: 12px !important;
+  overflow-wrap: anywhere;
+}
+.port-owner small {
+  display: block;
+  color: var(--muted-soft);
+  margin-top: 2px;
+}
+.port-action {
+  width: 1%;
+  text-align: right;
+}
+.port-release {
+  padding: 0 8px;
+  min-height: 0;
+  height: 24px;
+  margin-left: 6px;
+}
 .tool-list {
   font: 12px/1.8 var(--font-code);
   color: var(--muted);

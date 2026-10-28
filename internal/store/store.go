@@ -220,6 +220,8 @@ type Store struct {
 	appShares map[string]string
 	appLabels map[string]string
 	appStates map[string]*appState
+	// ports is the port registry, guarded by mu.
+	ports map[portKey]PortClaim
 }
 
 func Open(dir string) (*Store, error) {
@@ -269,6 +271,9 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 	if err = s.loadApps(); err != nil {
+		return nil, err
+	}
+	if err = s.loadPorts(); err != nil {
 		return nil, err
 	}
 	// Upload sessions do not survive restarts; remove their abandoned temporary bytes.

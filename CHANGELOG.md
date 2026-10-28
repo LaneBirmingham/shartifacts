@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **A port registry for the network** ([docs/ports.md](docs/ports.md)). Agents that deploy things around the network — a Docker stack on the server, a dev server — claim the ports they publish, with the new `ports` tool or `/api/ports`, and see what every other agent and person claimed. A claim without a port takes the next free one atomically, so two agents asking at once never get the same one, and a claim on a taken port is refused with its holder and the next free port. **Ports in use** on the apps home page lists them by machine and releases them. It is a tool of its own because no existing one fits: the app tools manage shartifacts apps, whose backends already get a free `$PORT` and never need one from here.
+
 ## 2026.10.28
 
 ### Changed
