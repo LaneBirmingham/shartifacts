@@ -583,42 +583,89 @@ function libraryOpen(open) {
 $("#toggle-library").onclick = () => libraryOpen(true);
 $("#close-library").onclick = $("#library-backdrop").onclick = () =>
   libraryOpen(false);
-// An open artifact fills the workspace; its details or its comments open on demand.
-function detailsOpen(open) {
-  if (open) commentsOpen(false);
-  document.body.classList.toggle("details-open", open);
-  $("#toggle-details").setAttribute("aria-expanded", String(open));
+// An open artifact fills the workspace. What is not used on every visit (its details, its
+// versions and its comments) shares one panel beside it, opened on the tab asked for: ⓘ
+// opens About or Versions, whichever was last, and Comments opens comments.
+let panelTab = "about",
+  infoTab = "about";
+function panelOpen(tab) {
+  if (tab) panelTab = tab;
+  if (tab && tab !== "comments") infoTab = tab;
+  document.body.classList.toggle("panel-open", !!tab);
+  $("#info-panel").hidden = !tab;
+  for (const t of document.querySelectorAll("[data-panel]")) {
+    const on = t.dataset.panel === panelTab;
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1;
+    $("#" + t.getAttribute("aria-controls")).hidden = !on;
+  }
+  $("#toggle-details").setAttribute("aria-expanded", String(!!tab && panelTab !== "comments"));
+  $("#comments-link").setAttribute("aria-expanded", String(!!tab && panelTab === "comments"));
 }
-function commentsOpen(open) {
-  if (open) detailsOpen(false);
-  document.body.classList.toggle("comments-open", open);
-  $("#comments-link").setAttribute("aria-expanded", String(open));
+const panelShowing = (...tabs) =>
+  !$("#info-panel").hidden && (!tabs.length || tabs.includes(panelTab));
+function toggleDetails() {
+  panelOpen(panelShowing("about", "versions") ? null : infoTab);
 }
-$("#toggle-details").onclick = () =>
-  detailsOpen(!document.body.classList.contains("details-open"));
+$("#toggle-details").onclick = toggleDetails;
 $("#comments-link").onclick = () => {
-  const open = !document.body.classList.contains("comments-open");
-  commentsOpen(open);
-  if (open) $("#comment-form textarea").focus();
+  if (panelShowing("comments")) return panelOpen(null);
+  panelOpen("comments");
+  $("#comment-form textarea").focus();
 };
-$("#close-comments").onclick = () => {
-  commentsOpen(false);
-  $("#comments-link").focus();
+for (const t of document.querySelectorAll("[data-panel]")) t.onclick = () => panelOpen(t.dataset.panel);
+// The tabs follow the ARIA tabs pattern: the arrow keys move between them.
+$(".panel-tabs").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const tabs = [...document.querySelectorAll("[data-panel]")],
+    next = tabs[(tabs.indexOf(e.target) + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+  panelOpen(next.dataset.panel);
+  next.focus();
+});
+$("#close-panel").onclick = () => {
+  const from = panelTab === "comments" ? $("#comments-link") : $("#toggle-details");
+  panelOpen(null);
+  from.focus();
 };
+$("#prop-versions").onclick = () => panelOpen("versions");
+// The Share menu: a link to copy, the full page, the download, and links for people outside.
+function shareMenu(open) {
+  $("#share-menu").hidden = !open;
+  $("#share-toggle").setAttribute("aria-expanded", String(open));
+}
+$("#share-toggle").onclick = () => shareMenu($("#share-menu").hidden);
+$("#share-menu").addEventListener("click", (e) => {
+  if (e.target.closest("button, a")) shareMenu(false);
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".share-wrap")) shareMenu(false);
+});
 const narrowScreen = matchMedia("(max-width: 900px)");
+// On a narrow screen the toolbar has no room for the version and view switches, so they
+// move to the top of the details panel.
+function placeViewControls() {
+  if (narrowScreen.matches) $("#panel-view-slot").append($("#view-controls"));
+  else $(".topbar-gap").before($("#view-controls"));
+}
+placeViewControls();
 narrowScreen.addEventListener("change", () => {
   if (!narrowScreen.matches && document.body.classList.contains("library-open"))
     libraryOpen(false);
+  placeViewControls();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
     if (!$("#comment-popover").hidden) return closeComposer();
     if (commentMode) return setCommentMode(false);
   }
+  if (e.key === "Escape" && !$("#share-menu").hidden) {
+    shareMenu(false);
+    return $("#share-toggle").focus();
+  }
   if (e.key === "Escape") {
     if (document.body.classList.contains("library-open")) libraryOpen(false);
-    else if (document.body.classList.contains("comments-open") && !document.querySelector("dialog[open]"))
-      $("#close-comments").click();
+    else if (panelShowing() && !document.querySelector("dialog[open]"))
+      $("#close-panel").click();
     if (document.body.classList.contains("immersive") && !document.fullscreenElement)
       leaveImmersive();
   }
@@ -905,12 +952,16 @@ function render({ keepFrame = false } = {}) {
   $("#artifact-description").hidden = !a.description;
   $("#pin").textContent = a.pinned ? "Unpin from library top" : "Pin to top of library";
   renderArchived();
-  $("#type-label").textContent = `${r.kind.toUpperCase()} / ARTIFACT`;
+  $("#type-label").textContent = r.kind.toUpperCase();
   $("#crumb").textContent = `Workspace / ${r.title}`;
-  $("#saved-at").textContent =
-    `Saved ${ago(r.created_at)} · ${latest} version${latest === 1 ? "" : "s"}`;
-  $("#revision-note").textContent =
-    r.note || "Every saved version stays in your library.";
+  $("#prop-kind").textContent = kindName[r.kind] || r.kind;
+  $("#saved-at").textContent = ago(a.revisions.at(-1).created_at);
+  $("#prop-created").textContent = ago(a.created_at);
+  $("#prop-versions").textContent = `${latest} — see history`;
+  $("#old-version").hidden = state.version === latest;
+  $("#old-version-text").textContent =
+    `Viewing v${r.version} of ${latest} · ${ago(r.created_at)}${r.note ? ` — “${r.note}”` : ""}`;
+  renderTimeline();
   $("#versions").replaceChildren();
   for (const v of [...a.revisions].reverse()) {
     const o = document.createElement("option");
@@ -942,8 +993,7 @@ function render({ keepFrame = false } = {}) {
   $("#download").href = `/api/artifacts/${a.id}/download?version=${r.version}`;
   $("#open-view").href =
     r.version === latest ? `/view/${a.id}` : `/view/${a.id}?version=${r.version}`;
-  $("#restore").hidden = state.version === latest;
-  $("#edit").hidden = state.version !== latest;
+  $("#edit").hidden = $("#edit-details").hidden = state.version !== latest;
   $("#draft-status").textContent = "Saved";
   $("#remote-change").hidden = true;
   state.dirty = false;
@@ -951,6 +1001,26 @@ function render({ keepFrame = false } = {}) {
   setEditing(false);
   $("#edit").hidden = state.version !== latest;
   list();
+}
+const kindName = { html: "HTML", react: "React", markdown: "Markdown", slides: "Slides", svg: "SVG", mermaid: "Mermaid", code: "Code" };
+// The Versions tab: every saved version, newest first, with its note. Picking one shows it.
+function renderTimeline() {
+  const a = state.artifact,
+    latest = a.revisions.length;
+  $("#timeline").replaceChildren(
+    ...[...a.revisions].reverse().map((r) => {
+      const b = node("button", "version-row");
+      b.type = "button";
+      if (r.version === state.version) b.setAttribute("aria-current", "true");
+      const head = node("span", "version-head");
+      head.append(node("strong", "", `v${r.version}`), r.version === latest ? " · latest" : "", node("small", "", ago(r.created_at)));
+      b.append(head, node("span", "version-note", r.note || "No note"));
+      b.onclick = () => showVersion(r.version);
+      const li = document.createElement("li");
+      li.append(b);
+      return li;
+    }),
+  );
 }
 // Comment threads on the open artifact. Agents read and answer them over MCP.
 let comments = [],
@@ -1035,7 +1105,11 @@ function renderComments() {
       node("p", "fineprint", comments.length ? "No open comments." : "No comments yet."),
     );
   const open = comments.filter((c) => !c.parent && !c.resolved).length;
-  $("#comments-link").textContent = open ? `Comments · ${open}` : "Comments";
+  // "Comments · 2" in words; a narrow toolbar shows the icon and the number.
+  for (const el of document.querySelectorAll("#comments-link .count, #comments-link .sep, #tab-comments .count")) {
+    el.hidden = !open;
+    el.textContent = open ? (el.matches(".sep") ? " · " : open) : "";
+  }
   markUnplaced();
   syncFrame();
 }
@@ -1095,7 +1169,7 @@ function lightThread(id) {
 function focusInFrame(id) {
   if (state.view === "source" || state.view === "changes") setView("preview");
   // On a phone the threads cover the artifact, so they step aside.
-  if (narrowScreen.matches) commentsOpen(false);
+  if (narrowScreen.matches) panelOpen(null);
   activeThread = id;
   syncFrame();
   $("#preview").contentWindow?.postMessage({ type: "shartifacts-comment-focus", id }, "*");
@@ -1108,7 +1182,7 @@ function showThread(id) {
     $("#show-resolved").checked = true;
     renderComments();
   }
-  commentsOpen(true);
+  panelOpen("comments");
   const el = $("#threads").querySelector(`[data-id="${CSS.escape(id)}"]`);
   if (!el) return;
   el.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -1154,8 +1228,8 @@ function placeComposer(rect) {
     gap = 10,
     floor = Math.min(innerHeight, frame.bottom),
     ceiling = Math.max(0, frame.top),
-    right = document.body.classList.contains("comments-open") && !narrowScreen.matches
-      ? $("#comments").getBoundingClientRect().left
+    right = panelShowing() && !narrowScreen.matches
+      ? $("#info-panel").getBoundingClientRect().left
       : innerWidth;
   const y =
     bottom + gap + h <= floor ? bottom + gap : top - gap - h >= ceiling ? top - gap - h : floor - h - gap;
@@ -1311,8 +1385,7 @@ async function load(id) {
   try {
     const a = await api(`/api/artifacts/${encodeURIComponent(id)}`);
     if (state.artifact?.id !== a.id) {
-      detailsOpen(false);
-      commentsOpen(false);
+      panelOpen(null);
       setCommentMode(false);
       closeComposer();
       comments = [];
@@ -1523,14 +1596,27 @@ $("#library").addEventListener("keydown", (e) => {
   if (e.key === "ArrowUp" && at === 0) $("#search").focus();
   else items[Math.min(items.length - 1, Math.max(0, at + (e.key === "ArrowDown" ? 1 : -1)))].focus();
 });
-document
-  .querySelectorAll("button[data-view]")
-  .forEach((b) => (b.onclick = () => setView(b.dataset.view)));
-$("#edit").onclick = () => {
+// On a phone the view switch is in the details panel, which closes to show the view picked.
+document.querySelectorAll("button[data-view]").forEach(
+  (b) =>
+    (b.onclick = () => {
+      setView(b.dataset.view);
+      if (b.closest("#info-panel")) panelOpen(null);
+    }),
+);
+// Editing starts from the Source pane (or E); the title, description and tags are edited
+// beside the source, so the details panel's button starts the same edit there.
+function startEditing(focus) {
+  if (state.version !== state.artifact.revisions.length) return;
   compareWith = null;
   setEditing(true);
   setView("split");
-  $("#source").focus();
+  $(focus).focus();
+}
+$("#edit").onclick = () => startEditing("#source");
+$("#edit-details").onclick = () => {
+  panelOpen(null);
+  startEditing("#edit-title");
 };
 $("#save").onclick = save;
 $("#discard").onclick = () => {
@@ -1549,16 +1635,18 @@ $("#source").addEventListener("keydown", (e) => {
     changed();
   }
 });
-$("#versions").onchange = () => {
+function showVersion(version) {
   if (state.dirty) {
     $("#versions").value = state.version;
     toast("Save or discard your draft before changing versions.");
     return;
   }
   remember();
-  state.version = Number($("#versions").value);
+  state.version = version;
   render();
-};
+}
+$("#versions").onchange = () => showVersion(Number($("#versions").value));
+$("#to-latest").onclick = () => showVersion(state.artifact.revisions.length);
 $("#restore").onclick = async () => {
   const r = state.artifact.revisions[state.version - 1];
   try {
@@ -1600,13 +1688,7 @@ $("#reload").onclick = async () => {
 $("#share").onclick = () =>
   copy(`${location.origin}/a/${state.artifact.id}?version=${state.version}`);
 $("#download").onclick = () => {};
-$("#more").onclick = () => ($("#more-menu").hidden = !$("#more-menu").hidden);
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#more-menu") && !e.target.closest("#more"))
-    $("#more-menu").hidden = true;
-});
 $("#copy-source").onclick = () => {
-  $("#more-menu").hidden = true;
   // The file the source pane shows: the page, or the supporting file picked.
   syncSource();
   copy(state.file ? state.files[state.file] : state.main);
@@ -1624,7 +1706,6 @@ $("#fork").onclick = async () => {
       tags: state.artifact.tags,
       note: `Copied from ${state.artifact.id} v${r.version}`,
     });
-    $("#more-menu").hidden = true;
     toast("Artifact duplicated");
   } catch (e) {
     toast(e.message);
@@ -1673,7 +1754,6 @@ async function createShare(version) {
   }
 }
 $("#share-out").onclick = async () => {
-  $("#more-menu").hidden = true;
   try {
     await renderShares();
     $("#share-dialog").showModal();
@@ -1691,7 +1771,6 @@ $("#pin").onclick = async () => {
     });
     state.artifact.pinned = a.pinned;
     $("#pin").textContent = a.pinned ? "Unpin from library top" : "Pin to top of library";
-    $("#more-menu").hidden = true;
     await refresh();
     toast(a.pinned ? "Pinned to the top of your library" : "Unpinned");
   } catch (e) {
@@ -1709,7 +1788,8 @@ function closeArtifact() {
   history.pushState({}, "", "/artifacts");
   $("#artifact").hidden = true;
   $("#welcome").hidden = false;
-  $("#more-menu").hidden = true;
+  panelOpen(null);
+  shareMenu(false);
   $("#crumb").textContent = "Workspace / Your artifacts";
   setTabIcon("");
 }
@@ -1733,8 +1813,8 @@ $("#delete").onclick = async () => {
   }
 };
 $("#delete-archived").onclick = $("#delete").onclick;
-// An archived artifact still opens, with a notice saying so; the more menu archives or
-// restores it.
+// An archived artifact still opens, with a notice saying so; the details panel archives
+// or restores it.
 function renderArchived() {
   const at = state.artifact?.archived_at;
   $("#archived-notice").hidden = !at;
@@ -1763,7 +1843,6 @@ async function archive(op, ids) {
   return res;
 }
 $("#archive").onclick = async () => {
-  $("#more-menu").hidden = true;
   try {
     await archive(state.artifact.archived_at ? "restore" : "archive", [state.artifact.id]);
   } catch (e) {
@@ -2014,6 +2093,24 @@ window.addEventListener("keydown", (e) => {
     !$("#artifact").hidden
   )
     setCommentMode(!commentMode);
+  // I opens the details panel and E edits the source, as C comments.
+  if (
+    (e.key === "i" || e.key === "e") &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) &&
+    !document.querySelector("dialog[open]") &&
+    state.artifact &&
+    !$("#artifact").hidden &&
+    !document.body.classList.contains("immersive")
+  ) {
+    if (e.key === "i") toggleDetails();
+    else if (!state.editing) {
+      e.preventDefault();
+      startEditing("#source");
+    }
+  }
   if (
     e.key === "n" &&
     !e.metaKey &&
@@ -2045,8 +2142,7 @@ window.addEventListener("popstate", () => {
     state.artifact = null;
     state.dirty = false;
     setEditing(false);
-    detailsOpen(false);
-    commentsOpen(false);
+    panelOpen(null);
     $("#artifact").hidden = true;
     $("#welcome").hidden = false;
     $("#crumb").textContent = "Workspace / Your artifacts";

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/design-system.css" />
     <link rel="stylesheet" href="/hub.css" />
     <link rel="stylesheet" href="/connect.css" />
+    <link rel="stylesheet" href="/mode-switch.css" />
     <link rel="stylesheet" href="/qr.css" />
     <link rel="stylesheet" href="/dark.css" />
     <link rel="stylesheet" href="/palettes.css" />
@@ -32,14 +33,17 @@
             /></svg></span
         ><span class="brand-name">shartifacts</span></a
       >
+      <nav class="mode-switch" aria-label="Artifacts or apps">
+        <a href="/artifacts"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/></svg><span class="label">Artifacts</span></a
+        ><a href="/" aria-current="page"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg><span class="label">Apps</span></a>
+      </nav>
       <nav class="tabs" id="tabs" role="tablist" aria-label="Open apps">
         <button class="tab home-tab" role="tab" id="tab-home" aria-controls="home" aria-selected="true" data-tab="home">
-          <span class="tab-icon" aria-hidden="true">⌂</span><span class="tab-name">Apps</span>
+          <span class="tab-icon" aria-hidden="true">⌂</span><span class="tab-name visually-hidden">Apps</span>
         </button>
       </nav>
       <div class="hub-actions">
-        <a class="button quiet" href="/artifacts" id="to-artifacts">Artifacts</a
-        ><button id="connect" class="quiet" type="button" data-connect>Connect an agent</button
+        <button id="connect" class="quiet" type="button" data-connect>Connect an agent</button
         ><button class="icon-button" type="button" data-signin aria-label="Sign-in and agent tokens"></button
         ><button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme"></button>
       </div>

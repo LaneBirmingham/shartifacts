@@ -1,25 +1,31 @@
 # Mobile workspace and fullscreen
 
 At widths up to 900 CSS pixels, **Library** opens a drawer with search,
-the folding **Filters** (tag chips, type, time and contents), creation, and the
-menu for apps, media, agent connection and sign-in. Close it with **Close library**, the backdrop, or Escape (Escape in a
+the **Artifacts · Apps** switch, the folding **Filters** (tag chips, type, time
+and contents), and the menu for a new artifact, media, agent connection and
+sign-in. Close it with **Close library**, the backdrop, or Escape (Escape in a
 search box with text clears it first). Selecting an artifact closes it; a tag
-under **Details** opens it, filtered to that tag.
+in the details panel opens it, filtered to that tag.
 The drawer keeps keyboard focus inside and restores focus when closed.
 
 An open artifact fills the workspace beneath the toolbar at every width (52
-pixels up to 900, 64 above). The toolbar holds **Comment** (comment mode, an
-icon alone up to 900 pixels), **Comments**, **Details** and **Fullscreen**. **Details** reveals the title, saved metadata, sharing,
-download, version controls, and Preview/Split/Source/Changes tabs; it closes
-again when another artifact opens. The tabs stay visible while a view other
-than Preview is selected, and **Edit source** keeps everything visible while
-editing. **Comments** opens a side panel (full width on phones) that Escape or
-× closes; Details and Comments replace each other. From 1280 pixels the panel
-sits beside the artifact rather than over it, so its pins stay in view; on a
-phone, showing a thread's spot in the artifact closes the panel first. The
+pixels up to 900, 64 above). The toolbar holds the title, the version and view
+switches, **Comment** (comment mode), **Comments**, **Share**, **ⓘ** (details)
+and **Fullscreen**. Below 1280 pixels the views and comment buttons are icons,
+their words kept as names for screen readers, and **Comments** shows its count
+as a number. Up to 900 pixels the version and view switches move to the top of
+the details panel, and picking a view there closes the panel; up to 640 the
+library and Share buttons are icons too, and up to 480 the title gives way to
+the buttons.
+
+**ⓘ** and **Comments** open one side panel (full width on phones), on its
+**About** or **Comments** tab, that Escape or × closes; it closes again when
+another artifact opens. From 1280 pixels the panel sits beside the artifact
+rather than over it, so its pins stay in view; on a phone, showing a thread's
+spot in the artifact closes the panel first. **Edit title, description & tags**
+closes it and starts editing. The
 comment composer opens beside what was picked and stays inside the screen. Large screens retain the
-permanent library. Below 420 pixels the viewer chip is hidden while an
-artifact is open.
+permanent library, with the viewer chip at its foot.
 
 **Fullscreen** displays the artifact alone with an **Exit fullscreen** button.
 It uses browser fullscreen when available and otherwise fills the page viewport,

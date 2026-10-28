@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- **Artifacts and Apps switch in the same place** ([docs/artifacts.md](docs/artifacts.md#editing)). An **Artifacts · Apps** switch sits under the logo on both pages and lights the side you are on, so going to Apps and coming back is the same move. It replaces the Apps entry in the sidebar menu and the Artifacts button in the apps bar; the apps bar's home tab is now the house icon alone.
+- **An open artifact's controls are sorted by how often you need them** ([docs/artifacts.md](docs/artifacts.md#editing), [docs/design/mobile.md](docs/design/mobile.md)). The toolbar holds the title, version, the Preview / Source / Split / Changes switch, Comment, Comments, a **Share** menu (copy link, open in a new tab, download, public read-only link) and **ⓘ**. **ⓘ** (or **I**) opens a details panel, as in Google Drive and Figma, with **About** (description, tags, dates, related artifacts, and the actions, with Archive and Delete last and apart), **Versions** (every version with its note) and **Comments**. **Edit source** sits on the Source pane (or press **E**), Save and Discard sit with the edit fields, and an earlier version shows a notice with **Restore this version** and **Back to latest**. The **Details** drop-down, the ••• menu and the footer under the panes are gone. Your name (**Who are you?**) moved to the foot of the sidebar.
+- **New artifact moved into the ⋯ menu** at the foot of the sidebar ([docs/artifacts.md](docs/artifacts.md#editing)), since agents make most artifacts; the library starts right under the search. **N** still opens it, as does **Paste or import source** on the home page.
+
 ### Added
 
 - **A port registry for the network** ([docs/ports.md](docs/ports.md)). Agents that deploy things around the network — a Docker stack on the server, a dev server — claim the ports they publish, with the new `ports` tool or `/api/ports`, and see what every other agent and person claimed. A claim without a port takes the next free one atomically, so two agents asking at once never get the same one, and a claim on a taken port is refused with its holder and the next free port. **Ports in use** on the apps home page lists them by machine and releases them. It is a tool of its own because no existing one fits: the app tools manage shartifacts apps, whose backends already get a free `$PORT` and never need one from here.
