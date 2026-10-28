@@ -214,10 +214,18 @@ func (s *Store) change(edit func(*state) error) error {
 // holding it. Holding one takes milliseconds.
 const lockStale = 10 * time.Second
 
-// lock takes meta/auth.lock, waiting up to five seconds for another process to let go.
+// lockWait is how long lock waits for another process to let go. It is longer than lockStale
+// so that a lock left by a process that died is broken rather than reported. Each hold
+// syncs the file to disk, which on a slow or busy disk takes a good part of a second, and
+// the other process may have a queue of edits to make first, so the wait is measured on
+// the clock rather than by counting the sleeps between tries.
+const lockWait = 2 * lockStale
+
+// lock takes meta/auth.json.lock, waiting up to lockWait for another process to let go.
 func (s *Store) lock() (func(), error) {
 	name := s.path + ".lock"
-	for wait := time.Duration(0); ; wait += 10 * time.Millisecond {
+	deadline := time.Now().Add(lockWait)
+	for {
 		f, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err == nil {
 			f.Close()
@@ -230,7 +238,7 @@ func (s *Store) lock() (func(), error) {
 			os.Remove(name)
 			continue
 		}
-		if wait >= 5*time.Second {
+		if time.Now().After(deadline) {
 			return nil, ErrLocked
 		}
 		time.Sleep(10 * time.Millisecond)

@@ -217,7 +217,7 @@ func TestConcurrentWritersKeepEveryEdit(t *testing.T) {
 	}
 	// Contention is the point, but ErrLocked is the lock's documented answer to it: a caller
 	// retries rather than the file corrupting. Forty writers at once on a slow pool (an fsync
-	// each, tens of milliseconds on a FUSE-backed array) outlast the five seconds acquisition
+	// each, tens of milliseconds on a FUSE-backed array) can outlast the lockWait acquisition
 	// waits, so the test retries the way a caller would. What it holds to is the promise:
 	// nothing is lost, and no lock is left behind.
 	retry := func(do func() error) {
