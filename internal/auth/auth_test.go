@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -214,17 +215,31 @@ func TestConcurrentWritersKeepEveryEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Contention is the point, but ErrLocked is the lock's documented answer to it: a caller
+	// retries rather than the file corrupting. Forty writers at once on a slow pool (an fsync
+	// each, tens of milliseconds on a FUSE-backed array) outlast the five seconds acquisition
+	// waits, so the test retries the way a caller would. What it holds to is the promise:
+	// nothing is lost, and no lock is left behind.
+	retry := func(do func() error) {
+		for attempt := 0; ; attempt++ {
+			err := do()
+			if err == nil {
+				return
+			}
+			if !errors.Is(err, ErrLocked) || attempt == 20 {
+				t.Error(err)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 	var wg sync.WaitGroup
 	for i := range 20 {
 		wg.Go(func() {
-			if _, err := server.NewSession(); err != nil {
-				t.Error(err)
-			}
+			retry(func() error { _, err := server.NewSession(); return err })
 		})
 		wg.Go(func() {
-			if _, _, err := cli.NewToken(fmt.Sprintf("agent %d", i)); err != nil {
-				t.Error(err)
-			}
+			retry(func() error { _, _, err := cli.NewToken(fmt.Sprintf("agent %d", i)); return err })
 		})
 	}
 	wg.Wait()
