@@ -36,15 +36,23 @@ func TestAgentTools(t *testing.T) {
 		t.Fatal(first)
 	}
 	cursor := first["cursor"].(float64)
+	posted := make(chan time.Time, 1)
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		request(h, "POST", "/api/artifacts/"+id+"/comments", `{"body":"Looks good"}`)
+		posted <- time.Now()
 	}()
-	start := time.Now()
 	next := sc(call("watch_artifacts", map[string]any{"ids": []string{id}, "after": cursor, "wait_seconds": 5}))
 	ev := next["events"].([]any)
-	if len(ev) != 1 || ev[0].(map[string]any)["kind"] != "comments" || time.Since(start) > 3*time.Second {
+	if len(ev) != 1 || ev[0].(map[string]any)["kind"] != "comments" {
 		t.Fatal(next)
+	}
+	// It must return the comment as soon as it is posted rather than sitting out the wait.
+	// Measure from the post, not from the call: how long writing the comment takes is the
+	// filesystem's business, and on a slow pool it is the file write, not the watch, that
+	// takes the time.
+	if late := time.Since(<-posted); late > 2*time.Second {
+		t.Fatalf("watch_artifacts returned %v after the comment was posted", late)
 	}
 	// delete_artifact needs the confirmation token.
 	asked := sc(call("delete_artifact", map[string]any{"id": id, "base_version": 1}))
