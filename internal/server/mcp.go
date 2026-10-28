@@ -15,6 +15,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// appVersion is the release this build is from, in CalVer: the date the release shipped,
+// plus a .2, .3 suffix when more than one ships in a day. It is what an agent sees in the
+// MCP handshake, so it moves only with the CHANGELOG heading and the git tag of the same
+// name — never ahead of them.
+const appVersion = "2026.10.28"
+
 // designRules is get_design_system's guide to the warm editorial design system (the
 // Terracotta palette); the html_starter after it carries the same tokens as CSS.
 const designRules = `shartifacts design system: warm editorial. A warm greige paper canvas, regular-weight serif headlines with negative tracking over a humanist sans, one terracotta accent used scarcely, stone feature cards and dark product surfaces. It should read like a literary publication, not a SaaS template. Copy the style element from html_starter into HTML artifacts (a rendered style element for React) and use its variables and classes; never inline hex.
@@ -146,7 +152,7 @@ Upload files with the curl command from list_media. Do not manually transcribe b
 Give people links on ` + links + `, e.g. ` + links + `/a/{id}; the upload URL is for your shell.
 Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps).
 ` + uploadLines
-	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: summary})
+	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: appVersion}, &mcp.ServerOptions{Instructions: summary})
 	m.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: guideURI, MIMEType: "text/plain", Text: guide}}}, nil
 	})

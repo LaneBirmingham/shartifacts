@@ -1,0 +1,52 @@
+name: CI
+
+# The one workflow. It lives in .gitea/ because Gitea is the canonical repository and GitHub
+# is only a mirror: mirroring copies this file to GitHub, where nothing reads it, so the
+# public repository can never run a build or a deploy.
+#
+# A branch or pull request is verified and stops there. `main` is verified and then deployed
+# to the homelab server, so a red build never reaches it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Two pushes in a row must not deploy at the same time, and a running deploy is not
+# cancelled by the next one: it would leave the stack half-rebuilt.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: shartifacts-ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test -race -timeout 20m ./...
+      - run: go build -trimpath -o bin/shartifacts .
+      - name: Compose files
+        run: |
+          docker compose config -q
+          COMPOSE_FILE=compose.yaml:deploy/caddy/compose.yaml docker compose config -q
+          CLOUDFLARE_TUNNEL_TOKEN=x COMPOSE_FILE=compose.yaml:deploy/cloudflare-tunnel/compose.yaml docker compose config -q
+      - name: Build both images
+        run: docker compose build
+
+  deploy:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: shartifacts-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Deploy to the server
+        run: |
+          echo "deploying $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
+          SRC="$GITHUB_WORKSPACE" sh scripts/deploy-tower.sh
