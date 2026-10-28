@@ -10,6 +10,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,8 +41,15 @@ jobs:
 
   deploy:
     needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: shartifacts-ci
+    # The runner mounts the docker socket into every job, but a host directory only when the
+    # job asks for it: the deploy needs the compose directory itself, at the same absolute
+    # path the host uses, because compose resolves bind mounts against the daemon.
+    container:
+      image: shartifacts-ci:local
+      volumes:
+        - /mnt/user/projects/shartifacts:/mnt/user/projects/shartifacts
     steps:
       - uses: actions/checkout@v4
         with:

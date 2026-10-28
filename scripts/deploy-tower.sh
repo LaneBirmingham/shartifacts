@@ -23,7 +23,13 @@ OWNER=${OWNER:-1001:100}
 KEEP_IMAGES=${KEEP_IMAGES:-5}
 
 [ -f "$SRC/go.mod" ] || { echo "refusing: SRC=$SRC does not look like the repository" >&2; exit 1; }
-[ -f "$DEPLOY_DIR/.env" ] || { echo "refusing: $DEPLOY_DIR/.env is missing" >&2; exit 1; }
+[ -f "$DEPLOY_DIR/.env" ] || {
+  echo "refusing: $DEPLOY_DIR/.env is missing" >&2
+  # Say what the directory does look like: a job that cannot see the mount should read as
+  # that, not as a deleted .env.
+  ls -la "$DEPLOY_DIR" 2>&1 | head -8 >&2
+  exit 1
+}
 
 SHA=$(git -C "$SRC" rev-parse --short HEAD)
 REV=$(git -C "$SRC" rev-parse HEAD)
