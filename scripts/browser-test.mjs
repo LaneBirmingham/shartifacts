@@ -1047,6 +1047,43 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect(page.locator(".thread .comment").nth(1)).toContainText("Added in v3.");
   await page.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(page.locator("#comments-link")).toHaveText("Comments");
+  await page.locator("#close-comments").click();
+  // Comments on the preview itself: comment mode picks what is clicked instead of using
+  // it, the thread keeps what it points at for agents, and its numbered pin opens it.
+  await frameInteractive();
+  await page.locator("#comment-mode").click();
+  await expect(page.locator("#comment-hint")).toBeVisible();
+  await frame.locator("#add").click();
+  await expect(page.locator("#pointed-label")).toHaveText("On button#add · “Add”");
+  await page.getByRole("textbox", { name: "Comment on this part" }).fill("Label it Add to total.");
+  await page.getByRole("button", { name: "Send to agent" }).click();
+  const pins = frame.locator("shartifacts-overlay .pin");
+  await expect(pins).toHaveText(["1"]);
+  await expect(page.locator("#comments-link")).toHaveText("Comments · 1");
+  await expect(frame.locator("#count")).toHaveText("10");
+  const pointed = (await client.callTool({ name: "artifact_comments", arguments: { id: tool.id, op: "list" } })).structuredContent.threads[0];
+  assert.deepEqual(
+    [pointed.anchor, pointed.element, pointed.quote, pointed.to_claude, pointed.version],
+    ["#add", '<button id="add">', "Add", true, 2],
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#comment-hint")).toBeHidden();
+  await pins.first().click();
+  await expect(page.locator("#comments")).toBeVisible();
+  await expect(page.locator(".thread.flash")).toContainText("Label it Add to total.");
+  await expect(page.locator(".thread-target").first()).toContainText("On button#add");
+  await expect(page.locator(".thread.unplaced")).toHaveCount(0);
+  await page.locator("#close-comments").click();
+  // Outside comment mode the page works as usual, and selected text offers a chip that quotes it.
+  await frame.locator("#v2").evaluate((h) => getSelection().selectAllChildren(h));
+  await frame.locator("shartifacts-overlay .chip").click();
+  await expect(page.locator("#pointed-quote")).toHaveText("v2");
+  await page.getByRole("textbox", { name: "Comment on this part" }).fill("Call it version two.");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
+  await expect(pins).toHaveText(["1", "2"]);
+  for (const t of (await client.callTool({ name: "artifact_comments", arguments: { id: tool.id, op: "list" } })).structuredContent.threads)
+    await client.callTool({ name: "artifact_comments", arguments: { id: tool.id, op: "resolve", comment_id: t.id } });
+  await expect(pins).toHaveCount(0);
   // Pinning lifts an artifact to the top of the library and the home gallery.
   await details();
   await page.getByRole("button", { name: "More artifact actions" }).click();
@@ -1197,7 +1234,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   // The "Broken" artifact errors on purpose, including in its home-page thumbnail.
   assert.deepEqual(errors.filter((e) => !e.includes("missingFunction")), [], "browser runtime errors");
   console.log(
-    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
+    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, commenting on the preview (comment mode, pins, quoted selections), and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
   );
 } catch (e) {
   if (page) {

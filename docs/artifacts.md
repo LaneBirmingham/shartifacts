@@ -34,6 +34,18 @@ All previews use an opaque-origin iframe sandbox, with a response CSP that also 
 - The sidebar keeps its room for the library. **Filters**, beside the library count, unfolds the type, time and contents menus and the most-used tags; folded away, whatever is filtering the library stays above it as chips that remove themselves, and the button counts them. **Apps, media & agents** at the foot opens a menu with the Apps page, the Media library, **Connect an agent** and **Sign-in**.
 - The phone layout keeps the library above the workspace. The workspace follows the system light or dark theme until you pick one with the sun/moon switch (the library footer, the apps bar, or the view bar). The choice is remembered in this browser, and artifacts keep their own styling.
 
+## Commenting
+
+Comment on an artifact the way you would in Claude: point at the part you mean.
+
+- **Comment** in the top bar (or **C**) turns on comment mode. Hovering outlines what is under the pointer, and a click picks it instead of using it, so buttons, links and forms in the artifact do nothing until you finish. A composer opens beside what you picked; **Comment** posts it, **Send to agent** posts it marked for your agent (`to_claude`), and **Cmd/Ctrl+Enter** sends. Comment mode stays on for the next one; **Done** or **Esc** ends it. Selected text in comment mode is commented on as a quote.
+- Outside comment mode, selecting text in the artifact shows a **Comment** chip that does the same for the words you selected.
+- Open threads are pinned, numbered, to what they point at, and quoted text is highlighted. A pin opens its thread in **Comments**; a thread's **On …** line scrolls the artifact to it and flashes it (on a slide deck, it turns to that slide). Pins follow the page as it scrolls, resizes and re-renders. Resolving a thread removes its pin.
+- A thread remembers what it points at by a CSS path, the words it quoted and the element's opening tag. A later version that moves things finds them again by the path or the words; when neither holds, the thread says **not found in this version**.
+- **Comments** also takes notes about the whole artifact, and quotes source text you select in the source pane.
+
+Pins, outlines and the chip are drawn by the preview's runtime in a shadow root outside the artifact's `<body>`, so the artifact's own DOM, selectors and styles never see them. They appear only in the workspace: gallery thumbnails, the full-page view and share links show none. A page that hides content, such as tabs, can listen for the `shartifacts:reveal` event, which bubbles from an element just before a thread scrolls to it.
+
 ## Finding things
 
 Library search reads everything an artifact says, not just its title: the rendered text of HTML, Markdown and slides, the words a React app shows, SVG and diagram labels, supporting files, descriptions, tags, version notes and comments. It runs on the server with no external service.

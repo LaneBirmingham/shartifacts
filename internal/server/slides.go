@@ -42,8 +42,10 @@ addEventListener('resize',fit);fit();show((parseInt(location.hash.slice(1))||1)-
 const key=k=>{if(['ArrowRight','ArrowDown','PageDown',' ','Enter'].includes(k))show(i+1);else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(k))show(i-1);else if(k==='Home')show(0);else if(k==='End')show(slides.length-1);
 else if(k==='f'||k==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{})}else if(k==='n'||k==='N')document.body.classList.toggle('show-notes');else return false;return true};
 addEventListener('keydown',e=>{if(!(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'))&&key(e.key))e.preventDefault()});
-// The page embedding the deck forwards navigation keys pressed while it has focus.
+// The page embedding the deck forwards navigation keys pressed while it has focus, and
+// a comment pinned to another slide reveals that slide before it is shown.
 addEventListener('message',e=>{if(e.source===parent&&e.data&&e.data.type==='shartifacts-key')key(e.data.key)});
+document.addEventListener('shartifacts:reveal',e=>{const s=e.target.closest&&e.target.closest('.slide');if(s)show(slides.indexOf(s))});
 addEventListener('click',e=>{if(e.defaultPrevented||e.target.closest('a,button,input,select,textarea,video,audio,details,#speaker')||getSelection().toString())return;show(e.clientX<innerWidth/3?i-1:i+1)});
 let x0=null;addEventListener('touchstart',e=>x0=e.touches[0].clientX,{passive:true});addEventListener('touchend',e=>{if(x0===null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;if(Math.abs(dx)>40)show(dx<0?i+1:i-1)});
 })();</script>`

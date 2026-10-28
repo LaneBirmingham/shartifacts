@@ -70,7 +70,7 @@ func (s *Server) addCommentTool(m *mcp.Server) {
 		CommentID string `json:"comment_id,omitempty" jsonschema:"Thread ID for resolve or reopen"`
 		All       bool   `json:"all,omitempty" jsonschema:"list resolved threads too"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "artifact_comments", Description: "Read and answer the user's comment threads on an artifact. Reply (add with parent) and resolve once addressed."}, func(ctx context.Context, req *mcp.CallToolRequest, in CommentsInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "artifact_comments", Description: "Read and answer the user's comment threads on an artifact. A thread made by pointing at the page carries what it points at: quote (its text), element (its opening tag, to find in the source) and anchor (a CSS path). Reply (add with parent) and resolve once addressed."}, func(ctx context.Context, req *mcp.CallToolRequest, in CommentsInput) (*mcp.CallToolResult, any, error) {
 		switch in.Op {
 		case "list":
 			list, e := s.Store.Comments(in.ID)

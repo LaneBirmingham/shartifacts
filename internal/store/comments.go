@@ -21,9 +21,11 @@ type Comment struct {
 	Author string `json:"author"`
 	Body   string `json:"body"`
 	Quote  string `json:"quote,omitempty"`
-	// Anchor is where a page placed the comment (a CSS path), and ToClaude marks one the
-	// person sent to their agent ("Send to Claude").
+	// Anchor is where a page placed the comment (a CSS path), Element the opening tag of
+	// what it points at (so an agent can find it in the source), and ToClaude marks one
+	// the person sent to their agent ("Send to Claude").
 	Anchor    string    `json:"anchor,omitempty"`
+	Element   string    `json:"element,omitempty"`
 	ToClaude  bool      `json:"to_claude,omitempty"`
 	Version   int       `json:"version"`
 	Resolved  bool      `json:"resolved,omitempty"`
@@ -36,7 +38,10 @@ type CommentInput struct {
 	Body     string `json:"body"`
 	Quote    string `json:"quote,omitempty"`
 	Anchor   string `json:"anchor,omitempty"`
+	Element  string `json:"element,omitempty"`
 	ToClaude bool   `json:"to_claude,omitempty"`
+	// Version is the one the person was looking at; zero means the latest.
+	Version int `json:"version,omitempty"`
 }
 
 const maxComments = 1000
@@ -84,8 +89,8 @@ func (s *Store) AddComment(id string, in CommentInput) (Comment, error) {
 	if in.Body == "" || len(in.Body) > 10000 {
 		return Comment{}, errors.New("comment must contain 1–10000 bytes")
 	}
-	if len(in.Quote) > 2000 || len(in.Anchor) > 2000 {
-		return Comment{}, errors.New("quote and anchor are at most 2000 bytes")
+	if len(in.Quote) > 2000 || len(in.Anchor) > 2000 || len(in.Element) > 2000 {
+		return Comment{}, errors.New("quote, anchor and element are at most 2000 bytes each")
 	}
 	author := strings.TrimSpace(in.Author)
 	if author == "" {
@@ -99,6 +104,13 @@ func (s *Store) AddComment(id string, in CommentInput) (Comment, error) {
 	a, ok := s.items[id]
 	if !ok {
 		return Comment{}, ErrNotFound
+	}
+	version := len(a.Revisions)
+	if in.Version != 0 {
+		if in.Version < 1 || in.Version > version {
+			return Comment{}, fmt.Errorf("version must be between 1 and %d", version)
+		}
+		version = in.Version
 	}
 	list := s.comments[id]
 	if len(list) >= maxComments {
@@ -119,7 +131,7 @@ func (s *Store) AddComment(id string, in CommentInput) (Comment, error) {
 	if _, err := rand.Read(b); err != nil {
 		return Comment{}, err
 	}
-	c := Comment{ID: hex.EncodeToString(b), Parent: in.Parent, Author: author, Body: in.Body, Quote: in.Quote, Anchor: in.Anchor, ToClaude: in.ToClaude, Version: len(a.Revisions), CreatedAt: time.Now().UTC()}
+	c := Comment{ID: hex.EncodeToString(b), Parent: in.Parent, Author: author, Body: in.Body, Quote: in.Quote, Anchor: in.Anchor, Element: in.Element, ToClaude: in.ToClaude, Version: version, CreatedAt: time.Now().UTC()}
 	if err := s.writeComments(id, append(append([]Comment{}, list...), c)); err != nil {
 		return Comment{}, err
 	}

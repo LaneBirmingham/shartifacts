@@ -33,7 +33,7 @@ curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts/bul
 | Endpoint | Body | Purpose |
 | --- | --- | --- |
 | `POST /api/artifacts/{id}/storage` | `{op, key, value, shared, prefix}` | `window.storage` operations; results match Claude's (`get` of a missing key returns `null`) |
-| `GET/POST /api/artifacts/{id}/comments` | `{body, parent, quote, author}` | List or add comments |
+| `GET/POST /api/artifacts/{id}/comments` | `{body, parent, quote, anchor, element, version, to_claude, author}` | List or add comments. `anchor` (a CSS path), `quote` and `element` (an opening tag) say what a comment points at; `version` is the one it was made on (the latest when left out) |
 | `PUT /api/artifacts/{id}/comments/{comment}` | `{resolved}` | Resolve or reopen a thread |
 | `PUT /api/artifacts/{id}/pin` | `{pinned}` | Pin to the top of the library (no new revision) |
 | `GET /api/artifacts?archived=` | | Summaries, most recently updated first: the library by default, `only` the archive, `include` both (archived ones carry `archived_at`); another value is `400` |

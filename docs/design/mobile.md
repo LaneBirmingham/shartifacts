@@ -8,13 +8,16 @@ under **Details** opens it, filtered to that tag.
 The drawer keeps keyboard focus inside and restores focus when closed.
 
 An open artifact fills the workspace beneath the toolbar at every width (52
-pixels up to 900, 64 above). The toolbar holds **Comments**, **Details** and
-**Fullscreen**. **Details** reveals the title, saved metadata, sharing,
+pixels up to 900, 64 above). The toolbar holds **Comment** (comment mode, an
+icon alone up to 900 pixels), **Comments**, **Details** and **Fullscreen**. **Details** reveals the title, saved metadata, sharing,
 download, version controls, and Preview/Split/Source/Changes tabs; it closes
 again when another artifact opens. The tabs stay visible while a view other
 than Preview is selected, and **Edit source** keeps everything visible while
 editing. **Comments** opens a side panel (full width on phones) that Escape or
-× closes; Details and Comments replace each other. Large screens retain the
+× closes; Details and Comments replace each other. From 1280 pixels the panel
+sits beside the artifact rather than over it, so its pins stay in view; on a
+phone, showing a thread's spot in the artifact closes the panel first. The
+comment composer opens beside what was picked and stays inside the screen. Large screens retain the
 permanent library. Below 420 pixels the viewer chip is hidden while an
 artifact is open.
 

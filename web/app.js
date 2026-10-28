@@ -79,15 +79,20 @@ function frameFor(w) {
   return thumb && { id: thumb.dataset.id, src: thumb.getAttribute("src"), thumbnail: true };
 }
 bridgeArtifactFrames(frameFor);
-let commentAnchor = "";
+// Commenting on what the preview shows, as in Claude's artifacts: comment mode (the
+// Comment button, or C) lets people click anything in the artifact, or select its text,
+// and comment on it right there, and open threads are pinned, numbered, to what they
+// point at. The preview's runtime (web/runtime.js) draws the pins and reports what was
+// picked; this page keeps the threads and the composer. The frame is the artifact's and
+// untrusted, so what it reports only ever places the composer: nothing is posted until
+// the person writes a comment and sends it.
+let commentMode = false,
+  pointed = null,
+  activeThread = "",
+  unplaced = new Set();
 hostArtifactFrames(frameFor, {
-  // A page's comments.openComposer opens this page's comment box with what it pointed at.
-  compose: (quote, anchor) => {
-    setQuote(quote || "");
-    commentAnchor = anchor || "";
-    commentsOpen(true);
-    $("#comment-form textarea").focus();
-  },
+  // A page's comments.openComposer opens the composer at what it pointed at.
+  compose: (target, frame) => !frame.thumbnail && openPointed(target),
   // artifact.publish: views move to the new version; a files publish keeps its frame.
   published: async (id, version, keepFrame) => {
     if (state.artifact?.id !== id || state.dirty) return;
@@ -107,13 +112,23 @@ forwardDeckKeys(
     (state.editing ? $("#edit-kind").value : state.artifact?.revisions[state.version - 1]?.kind) === "slides",
 );
 window.addEventListener("message", (event) => {
-  const el = $("#preview");
-  if (
-    event.source === el.contentWindow &&
-    event.data?.type === "shartifacts-preview-ready" &&
-    event.data.url === el.getAttribute("src")
-  )
+  const el = $("#preview"),
+    d = event.data;
+  if (event.source !== el.contentWindow || typeof d?.type !== "string") return;
+  if (d.type === "shartifacts-preview-ready" && d.url === el.getAttribute("src")) {
     el.dataset.ready = "true";
+    // A fresh frame knows nothing yet: tell it what to pin.
+    unplaced = new Set();
+    markUnplaced();
+    syncFrame();
+  } else if (d.type === "shartifacts-comment-pick") openPointed(d);
+  else if (d.type === "shartifacts-comment-moved" && pointed) placeComposer(d.rect);
+  else if (d.type === "shartifacts-comment-open") showThread(String(d.id));
+  else if (d.type === "shartifacts-comment-exit") setCommentMode(false);
+  else if (d.type === "shartifacts-comment-placed" && Array.isArray(d.missing)) {
+    unplaced = new Set(d.missing.map(String));
+    markUnplaced();
+  }
 });
 function clearDraft() {
   try {
@@ -596,6 +611,10 @@ narrowScreen.addEventListener("change", () => {
     libraryOpen(false);
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
+    if (!$("#comment-popover").hidden) return closeComposer();
+    if (commentMode) return setCommentMode(false);
+  }
   if (e.key === "Escape") {
     if (document.body.classList.contains("library-open")) libraryOpen(false);
     else if (document.body.classList.contains("comments-open") && !document.querySelector("dialog[open]"))
@@ -778,6 +797,7 @@ $("#compare-base").onchange = () => {
 function setView(view) {
   state.view = view;
   $("#panes").dataset.view = view;
+  if (view === "source" || view === "changes") setCommentMode(false);
   renderChanges();
   document.querySelectorAll("[data-view]").forEach((b) => {
     if (b.tagName === "BUTTON")
@@ -946,7 +966,7 @@ function commentNode(c) {
   const meta = node("div", "comment-meta");
   meta.append(
     node("strong", "", c.author),
-    ` · v${c.version} · ${ago(c.created_at)}${c.to_claude ? " · for your agent" : ""}${c.anchor ? " · on " + c.anchor.split(" > ").pop() : ""}`,
+    ` · v${c.version} · ${ago(c.created_at)}${c.to_claude ? " · for your agent" : ""}`,
   );
   el.append(meta);
   if (c.quote) el.append(node("blockquote", "comment-quote", c.quote));
@@ -958,8 +978,14 @@ function renderComments() {
     threads = $("#threads");
   threads.replaceChildren();
   const roots = comments.filter((c) => !c.parent && (all || !c.resolved));
+  const numbers = new Map(pinnedThreads().map((p) => [p.id, p.n]));
   for (const root of roots) {
     const thread = node("article", "thread" + (root.resolved ? " resolved" : ""));
+    thread.dataset.id = root.id;
+    if (root.anchor) thread.append(threadTarget(root, numbers.get(root.id)));
+    // Pointing at a thread lights its pin in the artifact.
+    thread.onmouseenter = () => lightThread(root.id);
+    thread.onmouseleave = () => lightThread("");
     for (const c of [root, ...comments.filter((r) => r.parent === root.id)])
       thread.append(commentNode(c));
     const actions = node("div", "thread-actions");
@@ -1010,6 +1036,138 @@ function renderComments() {
     );
   const open = comments.filter((c) => !c.parent && !c.resolved).length;
   $("#comments-link").textContent = open ? `Comments · ${open}` : "Comments";
+  markUnplaced();
+  syncFrame();
+}
+// The open threads that point at something in the artifact, numbered as their pins are.
+function pinnedThreads() {
+  return comments
+    .filter((c) => !c.parent && !c.resolved && c.anchor)
+    .map((c, i) => ({ id: c.id, n: i + 1, anchor: c.anchor, quote: c.quote || "" }));
+}
+// Tells the preview what to pin and whether a click there picks something to comment on.
+function syncFrame() {
+  const w = $("#preview")?.contentWindow;
+  if (!w || !state.artifact) return;
+  w.postMessage(
+    { type: "shartifacts-comments", enabled: true, mode: commentMode, pins: pinnedThreads(), active: activeThread, pending: !!pointed },
+    "*",
+  );
+}
+function setCommentMode(on) {
+  commentMode = !!on && !!state.artifact && state.view !== "source" && state.view !== "changes";
+  $("#comment-mode").setAttribute("aria-pressed", String(commentMode));
+  $("#comment-hint").hidden = !commentMode;
+  syncFrame();
+}
+// A short name for what a comment points at, from its opening tag: h2, button.primary, #total.
+function targetName(element, anchor) {
+  const tag =
+    (element || "").match(/^<([\w-]+)/)?.[1] ||
+    (anchor || "").split(" > ").pop().replace(/:nth-of-type\(\d+\)$/, "") ||
+    "element";
+  const id = (element || "").match(/ id="([^"]+)"/)?.[1],
+    cls = (element || "").match(/ class="([^"\s]+)/)?.[1];
+  return tag + (id ? "#" + id : cls ? "." + cls : "");
+}
+function threadTarget(c, n) {
+  const target = node(n ? "button" : "span", "thread-target");
+  if (n) {
+    target.type = "button";
+    target.title = "Show it in the artifact";
+    target.append(node("span", "pin-badge", String(n)));
+    target.onclick = () => focusInFrame(c.id);
+  }
+  target.append(node("span", "thread-target-name", "On " + targetName(c.element, c.anchor)));
+  target.append(node("span", "thread-unplaced", " · not found in this version"));
+  return target;
+}
+function markUnplaced() {
+  for (const t of $("#threads").querySelectorAll(".thread"))
+    t.classList.toggle("unplaced", unplaced.has(t.dataset.id));
+}
+function lightThread(id) {
+  if (activeThread === id) return;
+  activeThread = id;
+  syncFrame();
+}
+// Scrolls the artifact to what a thread points at and flashes it.
+function focusInFrame(id) {
+  if (state.view === "source" || state.view === "changes") setView("preview");
+  // On a phone the threads cover the artifact, so they step aside.
+  if (narrowScreen.matches) commentsOpen(false);
+  activeThread = id;
+  syncFrame();
+  $("#preview").contentWindow?.postMessage({ type: "shartifacts-comment-focus", id }, "*");
+}
+// A pin opens its thread in the comments panel.
+function showThread(id) {
+  const root = comments.find((c) => c.id === id && !c.parent);
+  if (!root) return;
+  if (root.resolved && !$("#show-resolved").checked) {
+    $("#show-resolved").checked = true;
+    renderComments();
+  }
+  commentsOpen(true);
+  const el = $("#threads").querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  el.classList.remove("flash");
+  void el.offsetWidth;
+  el.classList.add("flash");
+  el.addEventListener("animationend", () => el.classList.remove("flash"), { once: true });
+  lightThread(id);
+}
+// Opens the composer beside what was picked in the preview. Everything about the pick
+// comes from the artifact's frame, so it is trimmed to what the server accepts.
+function openPointed(d) {
+  if (!state.artifact || $("#artifact").hidden) return false;
+  const text = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+  pointed = { anchor: text(d.anchor, 2000), quote: text(d.quote, 2000), element: text(d.element, 500), selection: !!d.text };
+  const name = targetName(pointed.element, pointed.anchor),
+    words = pointed.quote.length > 60 ? pointed.quote.slice(0, 57) + "…" : pointed.quote;
+  $("#pointed-label").textContent = pointed.selection
+    ? `On text in ${name}`
+    : `On ${name}${words ? ` · “${words}”` : ""}`;
+  $("#pointed-quote").textContent = pointed.quote;
+  $("#pointed-quote").hidden = !pointed.selection || !pointed.quote;
+  const form = $("#comment-popover");
+  form.hidden = false;
+  placeComposer(d.rect);
+  form.elements.body.focus();
+  syncFrame();
+  return true;
+}
+// Places the composer below what it is about (above when there is no room), inside the
+// preview and clear of the comments panel.
+function placeComposer(rect) {
+  const form = $("#comment-popover");
+  if (form.hidden) return;
+  const frame = $("#preview").getBoundingClientRect(),
+    ok = rect && ["x", "y", "w", "h"].every((k) => Number.isFinite(rect[k])),
+    r = ok ? rect : { x: 0, y: 0, w: frame.width, h: 0 };
+  const left = frame.left + r.x,
+    top = frame.top + r.y,
+    bottom = top + r.h,
+    w = form.offsetWidth,
+    h = form.offsetHeight,
+    gap = 10,
+    floor = Math.min(innerHeight, frame.bottom),
+    ceiling = Math.max(0, frame.top),
+    right = document.body.classList.contains("comments-open") && !narrowScreen.matches
+      ? $("#comments").getBoundingClientRect().left
+      : innerWidth;
+  const y =
+    bottom + gap + h <= floor ? bottom + gap : top - gap - h >= ceiling ? top - gap - h : floor - h - gap;
+  form.style.left = Math.max(8, Math.min(right - w - 8, left)) + "px";
+  form.style.top = Math.max(8, Math.min(innerHeight - h - 8, y)) + "px";
+}
+function closeComposer() {
+  const form = $("#comment-popover");
+  form.hidden = true;
+  form.reset();
+  pointed = null;
+  syncFrame();
 }
 async function loadComments() {
   const id = state.artifact?.id;
@@ -1024,12 +1182,13 @@ async function loadComments() {
   }
 }
 async function addComment(input) {
-  await api(`/api/artifacts/${state.artifact.id}/comments`, {
+  const c = await api(`/api/artifacts/${state.artifact.id}/comments`, {
     method: "POST",
     body: JSON.stringify({ author: viewerName || undefined, ...input }),
   });
   await loadComments();
   await refresh();
+  return c;
 }
 function setQuote(text) {
   commentQuote = text.slice(0, 2000);
@@ -1041,9 +1200,39 @@ $("#source").addEventListener("select", (e) => {
   if (t.selectionEnd > t.selectionStart)
     setQuote(t.value.slice(t.selectionStart, t.selectionEnd));
 });
-$("#clear-quote").onclick = () => {
-  setQuote("");
-  commentAnchor = "";
+$("#clear-quote").onclick = () => setQuote("");
+$("#comment-mode").onclick = () => setCommentMode(!commentMode);
+$("#end-comment-mode").onclick = () => setCommentMode(false);
+$("#cancel-pointed").onclick = closeComposer;
+$("#comment-popover").elements.body.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    $("#comment-popover").requestSubmit();
+  }
+});
+$("#comment-popover").onsubmit = async (e) => {
+  e.preventDefault();
+  const form = e.target,
+    buttons = form.querySelectorAll("button"),
+    toAgent = e.submitter?.value === "agent";
+  if (!pointed) return;
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const c = await addComment({
+      body: form.elements.body.value,
+      quote: pointed.quote || undefined,
+      anchor: pointed.anchor || undefined,
+      element: pointed.element || undefined,
+      to_claude: toAgent || undefined,
+      version: state.version,
+    });
+    closeComposer();
+    toast(toAgent ? "Sent to your agent." : "Comment added.", { label: "View", run: () => showThread(c.id) });
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
 };
 // Who is using this browser: artifacts see them through the user capability and keep their
 // private data under their id. There are no accounts; people simply say who they are.
@@ -1109,11 +1298,9 @@ $("#comment-form").onsubmit = async (e) => {
     await addComment({
       body: form.elements.body.value,
       quote: commentQuote || undefined,
-      anchor: commentAnchor || undefined,
     });
     form.reset();
     setQuote("");
-    commentAnchor = "";
   } catch (err) {
     toast(err.message);
   } finally {
@@ -1126,6 +1313,8 @@ async function load(id) {
     if (state.artifact?.id !== a.id) {
       detailsOpen(false);
       commentsOpen(false);
+      setCommentMode(false);
+      closeComposer();
       comments = [];
       setQuote("");
       renderComments();
@@ -1815,6 +2004,17 @@ window.addEventListener("keydown", (e) => {
     save();
   }
   if (
+    e.key === "c" &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) &&
+    !document.querySelector("dialog[open]") &&
+    state.artifact &&
+    !$("#artifact").hidden
+  )
+    setCommentMode(!commentMode);
+  if (
     e.key === "n" &&
     !e.metaKey &&
     !e.ctrlKey &&
@@ -1840,6 +2040,8 @@ window.addEventListener("popstate", () => {
   const id = location.pathname.split("/")[2];
   if (id) load(id);
   else {
+    setCommentMode(false);
+    closeComposer();
     state.artifact = null;
     state.dirty = false;
     setEditing(false);
