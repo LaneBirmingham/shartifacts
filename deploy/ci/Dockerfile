@@ -11,11 +11,14 @@ RUN apk add --no-cache \
       bash \
       docker-cli \
       docker-cli-compose \
+      gcc \
       git \
+      musl-dev \
       nodejs \
       npm \
       openssh-client \
       rsync
 
+# The race detector needs cgo, so this is 1 rather than the 0 the release build uses.
 ENV GOTOOLCHAIN=local \
-    CGO_ENABLED=0
+    CGO_ENABLED=1
