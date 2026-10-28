@@ -62,6 +62,17 @@ A release is one commit on the work branch, before it merges, so the tagged comm
 
 The deploy that runs on the merge is the release.
 
+The **GitHub release** is the one thing a mirror does not carry: it copies refs, not release notes. Make it once the tag has arrived (within ten minutes):
+
+```sh
+git ls-remote github refs/tags/2026.10.28          # an empty answer means the mirror has not caught up
+sed -n '/^## 2026.10.28/,/^## /p' CHANGELOG.md | sed '1d;$d' > /tmp/notes.md
+gh release create 2026.10.28 --repo LaneBirmingham/shartifacts \
+  --title "2026.10.28 — <what it is>" --notes-file /tmp/notes.md
+```
+
+It is a publishing act, not a build, so it stays manual rather than a CI job with a GitHub token in the Gitea secrets. `v0.1.0` and `v0.2.0` keep their releases: deleting one leaves the tag behind and loses the notes, and the dates on the release page already show which numbering came first.
+
 ## Build and test
 
 ```sh
