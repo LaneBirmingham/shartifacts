@@ -540,6 +540,118 @@ code {
   display: block;
   background: #fff;
 }
+/* ---- focus ------------------------------------------------------------------ */
+/* Focus lifts the app's own frame over everything, so the app keeps running untouched while
+   the hub's chrome sits under it. The frame moves by transform alone (hub.js), and the
+   unfocusing class keeps it above the chrome while it shrinks back into place. */
+.frame-wrap.focused {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+/* While it shrinks it passes pointers through, so a click on the hub lands on the hub. */
+.frame-wrap.unfocusing {
+  z-index: 20;
+  pointer-events: none;
+}
+/* An installed app has no browser around it, so a page opened on its own would have no way
+   back. There, Focus does the job and the link goes. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .app-tools .open {
+    display: none;
+  }
+}
+.focus-bar {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 21;
+  display: grid;
+  justify-items: center;
+  transform: translateX(-50%);
+  /* Only the handle and the pill take pointers, so the app stays usable beside them. */
+  pointer-events: none;
+}
+.focus-bar > * {
+  grid-area: 1 / 1;
+  pointer-events: auto;
+}
+/* The handle is what stays when the pill tucks away: a short bar at the top edge, big
+   enough to tap, small enough to sit over an app's own header. */
+.focus-handle {
+  width: 72px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.focus-handle::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 5px auto 0;
+  border-radius: 2px;
+  background: rgb(28 26 25 / 45%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 55%);
+}
+.focus-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 4px 4px 12px;
+  border-radius: var(--radius-pill);
+  background: rgb(28 26 25 / 88%);
+  color: var(--on-dark);
+  font-size: 13px;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 20%);
+  backdrop-filter: blur(8px);
+  transition:
+    transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.2s;
+}
+.focus-name {
+  font-weight: 500;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.focus-hint {
+  color: var(--on-dark-soft);
+  display: none;
+}
+.focus-bar.hinting .focus-hint {
+  display: inline;
+}
+.focus-exit {
+  min-height: 0;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-dark-elevated);
+  color: var(--on-dark);
+  font-size: 13px;
+}
+.focus-bar.tucked .focus-pill {
+  transform: translateY(calc(-100% - 12px));
+  opacity: 0;
+  pointer-events: none;
+}
+.focus-bar.tucked .focus-handle {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-pill,
+  .focus-handle {
+    transition-duration: 0.01ms;
+  }
+}
+
 .frame-empty {
   position: absolute;
   inset: 0;

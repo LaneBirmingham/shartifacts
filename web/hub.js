@@ -321,6 +321,7 @@ function closeTab(id) {
   state.tabs = state.tabs.filter((t) => t !== id);
   persist();
   const view = state.views.get(id);
+  if (view && focused === view) leaveFocus({ animate: false, push: false });
   if (view) {
     clearInterval(view.logTimer);
     view.panel.remove();
@@ -331,6 +332,7 @@ function closeTab(id) {
 }
 
 function activate(id, push = true) {
+  if (focused && focused.id !== id) leaveFocus({ animate: false, push: false });
   state.active = id;
   for (const p of document.querySelectorAll(".panel")) p.classList.toggle("active", p.id === (id === "home" ? "home" : `panel-${id}`));
   renderTabs();
@@ -451,6 +453,7 @@ function ensureView(id) {
     loadFrame(view);
   };
   $(".share", panel).onclick = () => openShare(view);
+  $(".focus-app", panel).onclick = () => enterFocus(view);
   $(".close-drawer", panel).onclick = () => setDrawer(view, null);
   for (const b of panel.querySelectorAll("[data-drawer]")) b.onclick = () => setDrawer(view, view.drawer === b.dataset.drawer ? null : b.dataset.drawer);
   // A tab's frame loads when the tab is first shown, so restoring many tabs starts no
@@ -924,6 +927,7 @@ addEventListener("message", (e) => {
       updateBadge(view);
       api(`/api/apps/${view.id}/errors`, { method: "POST", body: JSON.stringify({ version: Number(d.version) || 0, message: d.message }) }).catch(() => {});
     }
+    if (d.type === "shartifacts-app-key" && d.key === "Escape" && focused === view) appEscape();
     if (d.type === "shartifacts-app-storage" && d.app === view.id && isMap(d.local)) {
       view.local = d.local;
       view.session = isMap(d.session) ? d.session : {};
@@ -1064,15 +1068,149 @@ $("#show-guide").onclick = async () => {
 };
 
 
+// ---- focus ----------------------------------------------------------------------
+
+// Focus fills the window with one app. It lifts the app's own frame rather than loading the
+// app again, so nothing the app holds is lost. The frame takes its new size at once and then
+// grows from where it was by transform alone (FLIP): the app lays out once, and only the
+// compositor works while it moves. /apps/{id}?focus opens an app this way, and Back leaves.
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let focused = null;
+let focusPushed = false;
+let focusAnim = null;
+let tuckTimer = 0;
+let lastEscape = 0;
+
+function flipFrom(el, from, done) {
+  const to = el.getBoundingClientRect();
+  if (reduceMotion.matches || !from.width || !from.height || !to.width || !to.height) return done();
+  const start = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
+  el.style.willChange = "transform";
+  const anim = el.animate(
+    [
+      { transformOrigin: "0 0", transform: start },
+      { transformOrigin: "0 0", transform: "none" },
+    ],
+    { duration: 320, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+  );
+  focusAnim = anim;
+  // A cancelled run (a second tap mid-flight) settles too, so classes never go stale.
+  anim.onfinish = anim.oncancel = () => {
+    el.style.willChange = "";
+    if (focusAnim === anim) focusAnim = null;
+    done();
+  };
+}
+
+// The chrome under a focused frame stays in the page but out of reach of Tab and screen
+// readers.
+function chromeInert(view, on) {
+  $(".hub-bar").inert = on;
+  for (const sel of [".app-toolbar", ".notice", ".drawer"]) $(sel, view.panel).inert = on;
+}
+
+function enterFocus(view, push = true) {
+  if (focused === view) return;
+  if (focused) leaveFocus({ animate: false, push: false });
+  const wrap = $(".frame-wrap", view.panel);
+  // Measured before anything changes, transforms included, so a reversal starts from
+  // where the frame is on screen.
+  const from = wrap.getBoundingClientRect();
+  focusAnim?.cancel();
+  focused = view;
+  wrap.classList.remove("unfocusing");
+  wrap.classList.add("focused");
+  chromeInert(view, true);
+  flipFrom(wrap, from, () => {});
+  const a = summary(view.id);
+  const bar = $("#focus-bar");
+  $(".focus-icon", bar).textContent = icon(a && a.icon);
+  $(".focus-name", bar).textContent = a ? a.name : "";
+  bar.classList.remove("hinting");
+  bar.hidden = false;
+  showFocusBar();
+  if (push) {
+    history.pushState({ focus: view.id }, "", `/apps/${view.id}?focus`);
+    focusPushed = true;
+  }
+  view.frame.focus();
+}
+
+function leaveFocus({ animate = true, push = true } = {}) {
+  const view = focused;
+  if (!view) return;
+  const wrap = $(".frame-wrap", view.panel);
+  const from = wrap.getBoundingClientRect();
+  focusAnim?.cancel();
+  focused = null;
+  wrap.classList.remove("focused");
+  chromeInert(view, false);
+  $("#focus-bar").hidden = true;
+  clearTimeout(tuckTimer);
+  if (animate) {
+    wrap.classList.add("unfocusing");
+    flipFrom(wrap, from, () => wrap.classList.remove("unfocusing"));
+  }
+  if (push && new URLSearchParams(location.search).has("focus")) {
+    // Undo our own history entry, so Back after leaving does not re-enter focus. A page
+    // opened at ?focus has no entry of ours to undo, so it drops the query instead.
+    if (focusPushed) history.back();
+    else history.replaceState({}, "", `/apps/${view.id}`);
+  }
+  focusPushed = false;
+  $(".focus-app", view.panel).focus({ preventScroll: true });
+}
+
+// The pill shows on entering and whenever it is reached for, then tucks into a handle so it
+// covers as little of the app as it can.
+function showFocusBar(hold = 2400) {
+  const bar = $("#focus-bar");
+  bar.classList.remove("tucked");
+  clearTimeout(tuckTimer);
+  if (hold) tuckTimer = setTimeout(() => !bar.matches(":hover, :focus-within") && bar.classList.add("tucked"), hold);
+}
+{
+  const bar = $("#focus-bar");
+  bar.onpointerenter = () => showFocusBar(0);
+  bar.onpointerleave = () => showFocusBar(900);
+  bar.addEventListener("focusin", () => showFocusBar(0));
+  bar.addEventListener("focusout", () => showFocusBar(900));
+  $(".focus-handle", bar).onclick = () => showFocusBar();
+  $(".focus-exit", bar).onclick = () => leaveFocus();
+}
+
+// Escape inside an app is the app's own first (closing its menus and dialogs), so leaving
+// from there takes a second press. The first shows how.
+function appEscape() {
+  const now = Date.now();
+  if (now - lastEscape < 600) {
+    lastEscape = 0;
+    leaveFocus();
+    return;
+  }
+  lastEscape = now;
+  $("#focus-bar").classList.add("hinting");
+  showFocusBar();
+}
+
 // ---- routing & keys -------------------------------------------------------------
 
 function route(push) {
   const m = location.pathname.match(/^\/apps\/([0-9a-f]{24})/);
-  if (m) openTab(m[1]);
-  else activate("home", push);
+  if (m) {
+    openTab(m[1]);
+    const view = state.views.get(m[1]);
+    if (new URLSearchParams(location.search).has("focus")) enterFocus(view, false);
+    else leaveFocus({ push: false });
+  } else activate("home", push);
 }
 addEventListener("popstate", () => route(false));
 addEventListener("keydown", (e) => {
+  if (focused && e.key === "Escape" && !document.querySelector("dialog[open]")) {
+    e.preventDefault();
+    leaveFocus();
+    return;
+  }
   if (!e.altKey || e.metaKey || e.ctrlKey) return;
   const n = Number(e.key);
   if (n >= 1 && n <= 9) {

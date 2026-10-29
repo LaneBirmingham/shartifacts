@@ -136,7 +136,45 @@ try {
   assert.deepEqual(await frame.locator("body").evaluate(() => [localStorage.getItem("hub-kept"), sessionStorage.getItem("tab")]), ["again", "1"]);
   await expect.poll(keptInHub).toBe("again");
 
-  // Switching to Home and back keeps the app's frame alive.
+  // Focus fills the window with the same frame (nothing reloads), and every way out works:
+  // Escape twice from inside the app, the pill's Exit, Back, and a page opened at ?focus.
+  await frame.locator("body").evaluate(() => (window.focusMark = true));
+  const wrap = page.locator(`#panel-${id} .frame-wrap`);
+  const fillsWindow = () =>
+    wrap.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return el.getAnimations().length === 0 && r.top === 0 && r.left === 0 && r.width === innerWidth && r.height === innerHeight;
+    });
+  await page.locator(`#panel-${id}`).getByRole("button", { name: "⤢ Focus" }).click();
+  await expect(page).toHaveURL(`${base}/apps/${id}?focus`);
+  await expect.poll(fillsWindow).toBe(true);
+  await expect(page.locator("#focus-bar")).toBeVisible();
+  await page.screenshot({ path: "test-results/apps-focus.png" });
+  assert.equal(await page.locator(".hub-bar").evaluate((el) => el.inert), true);
+  await frame.locator("body").press("Escape");
+  await expect(page.locator("#focus-bar")).toHaveClass(/hinting/);
+  await frame.locator("body").press("Escape");
+  await expect(page).toHaveURL(`${base}/apps/${id}`);
+  await expect(page.locator("#focus-bar")).toBeHidden();
+  await expect.poll(() => wrap.evaluate((el) => el.getAnimations().length === 0 && !el.classList.contains("unfocusing"))).toBe(true);
+  assert.equal(await page.locator(".hub-bar").evaluate((el) => el.inert), false);
+  await page.locator(`#panel-${id}`).getByRole("button", { name: "⤢ Focus" }).click();
+  await page.getByRole("button", { name: "Leave focus" }).click();
+  await expect(page).toHaveURL(`${base}/apps/${id}`);
+  await page.locator(`#panel-${id}`).getByRole("button", { name: "⤢ Focus" }).click();
+  await page.goBack();
+  await expect(page).toHaveURL(`${base}/apps/${id}`);
+  await expect(page.locator("#focus-bar")).toBeHidden();
+  assert.equal(await frame.locator("body").evaluate(() => window.focusMark), true);
+  await page.goto(`${base}/apps/${id}?focus`);
+  await expect.poll(fillsWindow).toBe(true);
+  await page.locator("#focus-bar .focus-exit").focus();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(`${base}/apps/${id}`);
+  await expect(frame.getByText("Buy milk")).toBeVisible();
+
+  // Switching to Home and back keeps the app's frame alive. The first click usually lands
+  // while the frame is still shrinking back from focus, which must not swallow it.
   await page.getByRole("tab", { name: "Apps" }).click();
   await expect(page).toHaveURL(`${base}/`);
   await page.getByRole("tab", { name: /Team notes/ }).click();
@@ -299,7 +337,7 @@ try {
   assert.equal((await fetch(`${base}/run/${id}/live/`)).status, 404);
 
   assert.deepEqual(errors, [], "browser errors");
-  console.log("PASS: apps hub — MCP get_app (guide, list, files, logs) / deploy_app (create, edit) / manage_app (call, share, delete), launcher, tabs (open, restore, switch, close), sandboxed frontend calling its Go backend (fetch and plain forms), rollback, live-deploy notice, logs drawer, secrets, public links (full and read-only) on the app's own hostname with persistent localStorage, cookies and IndexedDB kept apart from other apps, localStorage kept by the hub, mobile layouts, artifacts workspace at /artifacts, and sign-in (app sessions only for signed-in frames, backends closed to everyone else, agent tokens, public links unaffected).");
+  console.log("PASS: apps hub — MCP get_app (guide, list, files, logs) / deploy_app (create, edit) / manage_app (call, share, delete), launcher, tabs (open, restore, switch, close), focus (same frame, Escape twice, Exit, Back, ?focus), sandboxed frontend calling its Go backend (fetch and plain forms), rollback, live-deploy notice, logs drawer, secrets, public links (full and read-only) on the app's own hostname with persistent localStorage, cookies and IndexedDB kept apart from other apps, localStorage kept by the hub, mobile layouts, artifacts workspace at /artifacts, and sign-in (app sessions only for signed-in frames, backends closed to everyone else, agent tokens, public links unaffected).");
 } finally {
   if (client) await client.close();
   if (browser) await browser.close();
