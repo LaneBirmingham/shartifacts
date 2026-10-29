@@ -78,6 +78,15 @@ function timeAgo(iso) {
 const icon = (name) => (typeof artifactIcon === "function" && artifactIcon(name)) || "▦";
 const backendLabel = { go: "Go backend", binary: "Binary backend" };
 
+// An app launched from its own icon on a phone's home screen (start_url adds ?installed,
+// apps_install.go) shows alone: no tab bar or toolbar around it, and it leaves the hub's
+// saved tabs as they were.
+const installedApp = (() => {
+  const m = location.pathname.match(/^\/apps\/([0-9a-f]{24})$/);
+  return m && new URLSearchParams(location.search).has("installed") ? m[1] : "";
+})();
+if (installedApp) document.documentElement.classList.add("installed");
+
 const state = {
   apps: [],
   runtime: null,
@@ -300,7 +309,7 @@ function persist() {
 }
 
 function openTab(id) {
-  if (!state.tabs.includes(id)) {
+  if (!installedApp && !state.tabs.includes(id)) {
     state.tabs.push(id);
     persist();
   }
@@ -328,10 +337,11 @@ function activate(id, push = true) {
   const tab = id === "home" ? $("#tab-home") : document.getElementById(`tab-${id}`);
   if (tab) tab.scrollIntoView({ block: "nearest", inline: "nearest" });
   const a = id !== "home" && summary(id);
-  document.title = a ? `${a.name} — shartifacts` : "shartifacts — apps";
+  document.title = a ? (installedApp ? a.name : `${a.name} — shartifacts`) : "shartifacts — apps";
   setTabIcon(a ? a.icon : "");
+  offerInstall(id);
   const path = id === "home" ? "/" : `/apps/${id}`;
-  if (push && location.pathname !== path) history.pushState({}, "", path);
+  if (push && !installedApp && location.pathname !== path) history.pushState({}, "", path);
   if (id !== "home") {
     const view = state.views.get(id);
     if (view && view.detail && !view.started) loadFrame(view);
@@ -345,6 +355,73 @@ function setTabIcon(name) {
   link.href = emoji
     ? `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="88">${emoji}</text></svg>`)}`
     : "/favicon.svg";
+}
+
+// ---- installing an app on its own ------------------------------------------------
+
+// offerInstall links the manifest of whatever is showing, so a browser's "Install app"
+// installs the app in the active tab under its own name and icon, or the workspace from
+// the home tab. The app's manifest needs the session cookie, which a manifest request
+// sends only when asked to. It is linked once the app's launcher icon is drawn, so the
+// browser's first look at it already finds the icon.
+async function offerInstall(id) {
+  const link = $('link[rel="manifest"]');
+  const touch = $('link[rel="apple-touch-icon"]');
+  if (id === "home") {
+    link.removeAttribute("crossorigin");
+    link.href = "/manifest.webmanifest";
+    touch.href = "/icon-192.png";
+    return;
+  }
+  const view = state.views.get(id);
+  if (!view || !view.detail) return; // loadDetail calls again
+  await drawLauncherIcon(view.detail).catch(() => {});
+  if (state.active !== id) return;
+  const href = `/apps/${id}/manifest.webmanifest`;
+  if (link.getAttribute("href") !== href) {
+    link.crossOrigin = "use-credentials";
+    link.href = href;
+  }
+  touch.href = `/apps/${id}/icon.png`;
+}
+
+// launcherKey names what an app's launcher tile shows: its emoji, or its first letter.
+const launcherKey = (d) => {
+  const emoji = typeof artifactIcon === "function" ? artifactIcon(d.icon) : "";
+  return emoji ? `emoji:${emoji}` : `letter:${([...d.name.trim()][0] || "?").toUpperCase()}`;
+};
+const drawing = new Map();
+
+// drawLauncherIcon draws the tile a phone shows for an app installed on its own, when the
+// one the server keeps was drawn from something else. The browser draws it because it has
+// the emoji font the server lacks. The picture fills the middle 55%, inside the circle
+// launchers crop maskable icons to, so one tile serves as both kinds.
+function drawLauncherIcon(d) {
+  const key = launcherKey(d);
+  if (d.launcher_icon === key) return Promise.resolve();
+  if (drawing.get(d.id)?.key === key) return drawing.get(d.id).done;
+  const done = (async () => {
+    const size = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const g = c.getContext("2d");
+    g.fillStyle = "#f9f8f6";
+    g.fillRect(0, 0, size, size);
+    const [kind, text] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+    g.font = kind === "emoji" ? `280px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif` : `300px Georgia, "Times New Roman", serif`;
+    g.fillStyle = "#403b38";
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    // Centre the glyph's ink, not its line box, which sits emoji and letters off-centre.
+    const m = g.measureText(text);
+    g.fillText(text, size / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2, size / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+    const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
+    if (!blob) return;
+    await api(`/api/apps/${d.id}/launcher-icon?for=${encodeURIComponent(key)}`, { method: "PUT", body: blob, headers: { "Content-Type": "image/png" } });
+    d.launcher_icon = key;
+  })().finally(() => drawing.get(d.id)?.done === done && drawing.delete(d.id));
+  drawing.set(d.id, { key, done });
+  return done;
 }
 
 $("#tab-home").onclick = () => activate("home");
@@ -390,6 +467,7 @@ async function loadDetail(view, logs = false) {
     return;
   }
   renderView(view);
+  if (state.active === view.id) offerInstall(view.id);
 }
 
 function renderView(view) {
@@ -1005,7 +1083,7 @@ addEventListener("keydown", (e) => {
 
 (async () => {
   await refresh();
-  for (const id of state.tabs) ensureView(id);
+  if (!installedApp) for (const id of state.tabs) ensureView(id);
   route(false);
   setInterval(() => !document.hidden && refresh(), 4000);
   document.addEventListener("visibilitychange", () => !document.hidden && refresh());

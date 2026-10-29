@@ -68,6 +68,8 @@ The `.env` here uses the program's own variables (`SHARTIFACTS_LISTEN=127.0.0.1:
 
 The workspace is a web app with a manifest and icons, so a phone installs it as an app instead of a bookmark. In Chrome on Android, **⋮ → Install app** (or **Add to Home screen**) puts it in the drawer and it opens in its own window, without a browser toolbar over it; it starts at the library. On iPhone and iPad, **Share → Add to Home Screen** from Safari does the same, using the touch icon.
 
+Each app installs on its own too, from its tab, under its own name and icon: see [apps.md](apps.md) (**Installing an app on its own**).
+
 This needs an `https://` name with a real certificate, as [modes.md](modes.md) describes: over plain `http://` browsers keep the old behaviour and add a shortcut that opens inside a browser tab. If you installed the workspace before this manifest existed, remove that entry from your home screen and install it again — an old shortcut keeps the browser toolbar.
 
 ## Upgrade

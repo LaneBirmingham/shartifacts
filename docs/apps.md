@@ -49,6 +49,14 @@ A frontend-only change therefore costs about the size of the files it changed. T
 
 **Public links.** With `SHARTIFACTS_SHARE_ORIGIN` set (see [sharing.md](sharing.md)), **Share** makes a link at `https://share.example.com/p/<token>/` that follows the live version or stays on one. Visitors use the whole app, frontend and backend; a **read-only** link refuses everything but `GET` and `HEAD` before it reaches the backend. On the share hostname only `/p/…` and `/s/…` are served. Revoking a link ends it at once. With `-app-origin` as well, links move to a hostname of the app's own, where the page keeps localStorage, IndexedDB and cookies (see [sharing.md](sharing.md#apps-on-hostnames-of-their-own)).
 
+**Installing an app on its own.** Each app also installs on a phone as an app of its own, beside the workspace, with its own name and icon. Open its tab and use the browser's install (in Chrome on Android, **⋮ → Install app**): the hub links a manifest made for the app in that tab, at `/apps/{id}/manifest.webmanifest`. The installed app opens at `/apps/{id}?installed`, where the hub shows the app alone, without its tab bar or the app's toolbar. It is the signed-in workspace, not a public link: with sign-in on, it needs the same session the browser already has. The manifest is made from the app as it is, so new apps install with no change to the server, and an installed app picks up a new name or icon when the phone next checks. The icon is the first of:
+
+- `icon.png` at the live version's web root (`public/icon.png` works), square and 192–2048 px, plus `icon-maskable.png` with its picture inside the middle 80% for launchers that crop icons to a shape;
+- a tile the hub draws from the app's emoji or the first letter of its name, when its tab is opened (the browser has the emoji font; the server keeps the tile);
+- the workspace's icon.
+
+The same `https://` requirement as [installing the workspace](install.md#install-it-on-your-phone) applies.
+
 **Browser storage.** App pages run with an opaque origin, so the browser gives them no storage of their own. In a hub tab, the hub keeps each app's `localStorage` for it, per app and per browser (in the hub's IndexedDB), and `sessionStorage` while the tab stays open. A page opened on its own keeps both only until it reloads. Cookies never pass to or from a backend except on an app's own origin.
 
 ## Where backends run
