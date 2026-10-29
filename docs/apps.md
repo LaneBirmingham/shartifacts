@@ -57,6 +57,8 @@ A frontend-only change therefore costs about the size of the files it changed. T
 - a tile the hub draws from the app's emoji or the first letter of its name, when its tab is opened (the browser has the emoji font; the server keeps the tile);
 - the workspace's icon.
 
+The hub page for an app (`/apps/{id}`) links that app's manifest in the HTML it is served with, so a browser that decides on a page as it loads already sees the app and not the workspace. The **⤓ Install** button in the app's toolbar uses that: on a page loaded as the app it opens the browser's install prompt, and from anywhere else it reloads the page as the app (`/apps/{id}?install`) and offers the prompt there. If the browser offers nothing (Chrome says the workspace is "already installed" when you are in the installed workspace app itself), use Chrome rather than the installed shartifacts window.
+
 The same `https://` requirement as [installing the workspace](install.md#install-it-on-your-phone) applies.
 
 **Browser storage.** App pages run with an opaque origin, so the browser gives them no storage of their own. In a hub tab, the hub keeps each app's `localStorage` for it, per app and per browser (in the hub's IndexedDB), and `sessionStorage` while the tab stays open. A page opened on its own keeps both only until it reloads. Cookies never pass to or from a backend except on an app's own origin.

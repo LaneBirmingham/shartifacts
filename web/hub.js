@@ -63,7 +63,7 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 3200);
+  toastTimer = setTimeout(() => (t.hidden = true), Math.max(3200, msg.length * 60));
 }
 
 function timeAgo(iso) {
@@ -387,6 +387,43 @@ async function offerInstall(id) {
   touch.href = `/apps/${id}/icon.png`;
 }
 
+// The install button. A browser offers an install (beforeinstallprompt) for the manifest
+// the page loaded with, and the server links an app's own on a full load of /apps/{id}.
+// Switching tabs afterwards only swaps the link, which Chrome may ignore when the
+// workspace is already installed. So the button prompts when this page loaded as the app,
+// and otherwise reloads the page as the app (?install) and offers the prompt there, where
+// the browser's first look is at the app's manifest.
+let installEvent = null;
+const loadedAs = location.pathname.match(/^\/apps\/([0-9a-f]{24})$/)?.[1] || "";
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installEvent = e;
+  if (loadedAs && new URLSearchParams(location.search).has("install")) toast("Ready: tap Install to add this app");
+});
+window.addEventListener("appinstalled", () => {
+  installEvent = null;
+  toast("Installed. Open it from your home screen.");
+});
+
+async function installApp(id) {
+  if (installEvent && loadedAs === id) {
+    const ev = installEvent;
+    installEvent = null; // a browser allows each offer once
+    await ev.prompt();
+    return;
+  }
+  if (loadedAs !== id || !new URLSearchParams(location.search).has("install")) {
+    location.assign(`/apps/${id}?install`);
+    return;
+  }
+  toast("Your browser isn't offering this. Open it in Chrome itself, not the installed shartifacts app, then ⋮ → Install app (iPhone: Share → Add to Home Screen). If it says already installed, remove the old home-screen entry.");
+}
+
+// A page reloaded for installing waits briefly for the browser's offer, and says so if none comes.
+if (loadedAs && new URLSearchParams(location.search).has("install")) {
+  setTimeout(() => !installEvent && toast("No install offer yet. Tap Install to see why."), 4000);
+}
+
 // launcherKey names what an app's launcher tile shows: its emoji, or its first letter.
 const launcherKey = (d) => {
   const emoji = typeof artifactIcon === "function" ? artifactIcon(d.icon) : "";
@@ -454,6 +491,7 @@ function ensureView(id) {
   };
   $(".share", panel).onclick = () => openShare(view);
   $(".focus-app", panel).onclick = () => enterFocus(view);
+  $(".install-app", panel).onclick = () => installApp(view.id);
   $(".close-drawer", panel).onclick = () => setDrawer(view, null);
   for (const b of panel.querySelectorAll("[data-drawer]")) b.onclick = () => setDrawer(view, view.drawer === b.dataset.drawer ? null : b.dataset.drawer);
   // A tab's frame loads when the tab is first shown, so restoring many tabs starts no

@@ -277,3 +277,29 @@ func TestAppInstallNeedsSignIn(t *testing.T) {
 		}
 	}
 }
+
+// TestAppPageLinksItsOwnManifest holds that a full load of an app's hub page already links
+// that app's manifest, so a browser judges the page by the app and not by the workspace it
+// may have installed. The home page and an unknown app keep the workspace manifest.
+func TestAppPageLinksItsOwnManifest(t *testing.T) {
+	s, _ := appServer(t, nil)
+	s.Web = os.DirFS("../../web")
+	h := s.Handler()
+	w := call(h, "POST", "/api/apps", `{"name":"Broadsheet","files":{"index.html":"<!doctype html><p>news"}}`)
+	id := decodeBody(t, w)["app"].(map[string]any)["id"].(string)
+
+	page := call(h, "GET", "/apps/"+id, "").Body.String()
+	for _, want := range []string{`href="/apps/` + id + `/manifest.webmanifest" crossorigin="use-credentials"`, `rel="apple-touch-icon" href="/apps/` + id + `/icon.png"`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the app's page does not link %q", want)
+		}
+	}
+	if strings.Contains(page, `href="/manifest.webmanifest"`) {
+		t.Fatal("the app's page still links the workspace manifest")
+	}
+	for _, p := range []string{"/", "/apps", "/apps/" + strings.Repeat("0", 24), "/apps/not-an-id"} {
+		if body := call(h, "GET", p, "").Body.String(); !strings.Contains(body, `href="/manifest.webmanifest"`) {
+			t.Fatalf("%s should keep the workspace manifest", p)
+		}
+	}
+}
