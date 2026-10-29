@@ -23,6 +23,15 @@ import (
 // BuildTimeout bounds one backend build, module downloads included.
 const BuildTimeout = 5 * time.Minute
 
+// cacheDir is where backend builds keep the Go toolchain's build and module caches: one
+// cache, wherever the caller put it, so the standard library is compiled once.
+func (l *Local) cacheDir() string {
+	if l.CacheDir != "" {
+		return l.CacheDir
+	}
+	return filepath.Join(l.Dir, ".cache")
+}
+
 func (l *Local) Build(ctx context.Context, req BuildRequest) BuildResult {
 	l.init()
 	vdir, err := l.versionDir(req.App, req.Version)
@@ -75,7 +84,7 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	if !strings.HasPrefix(pkg, "./") || strings.Contains(pkg, "..") {
 		return BuildResult{Error: "the Go package must be a path inside the app, like ./server"}
 	}
-	cache := filepath.Join(l.Dir, ".cache")
+	cache := l.cacheDir()
 	mod := "-mod=mod"
 	if _, err := os.Stat(filepath.Join(src, "vendor", "modules.txt")); err == nil {
 		mod = "-mod=vendor"

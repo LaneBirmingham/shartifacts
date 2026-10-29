@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -494,7 +492,7 @@ func (h *headerRecorder) last() string {
 func TestSignInGatesAppBackends(t *testing.T) {
 	rec := &headerRecorder{}
 	s, h := appServer(t, func(st *store.Store) runner.Runtime {
-		local := &runner.Local{Dir: st.AppsDir(), GoBinary: filepath.Join(runtime.GOROOT(), "bin", "go")}
+		local := localRunner(st.AppsDir(), false)
 		t.Cleanup(local.Close)
 		rec.Runtime = local
 		return rec

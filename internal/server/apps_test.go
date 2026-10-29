@@ -12,9 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +31,7 @@ func appServer(t *testing.T, rt func(st *store.Store) runner.Runtime) (*Server, 
 	if rt != nil {
 		s.Runtime = rt(st)
 	} else {
-		local := &runner.Local{Dir: st.AppsDir(), GoBinary: filepath.Join(runtime.GOROOT(), "bin", "go")}
+		local := localRunner(st.AppsDir(), false)
 		t.Cleanup(local.Close)
 		s.Runtime = local
 	}
@@ -334,7 +332,7 @@ func TestAppsThroughRunnerSidecar(t *testing.T) {
 	t.Setenv("SHARTIFACTS_RUNNER_TOKEN", "")
 	var sidecar *httptest.Server
 	_, h := appServer(t, func(st *store.Store) runner.Runtime {
-		local := &runner.Local{Dir: st.AppsDir(), GoBinary: filepath.Join(runtime.GOROOT(), "bin", "go"), Remote: true}
+		local := localRunner(st.AppsDir(), true)
 		t.Cleanup(local.Close)
 		sidecar = httptest.NewServer(runner.Handler(local))
 		t.Cleanup(sidecar.Close)
@@ -414,7 +412,7 @@ func TestAppStreaming(t *testing.T) {
 		var rt func(st *store.Store) runner.Runtime
 		if viaSidecar {
 			rt = func(st *store.Store) runner.Runtime {
-				local := &runner.Local{Dir: st.AppsDir(), GoBinary: filepath.Join(runtime.GOROOT(), "bin", "go"), Remote: true}
+				local := localRunner(st.AppsDir(), true)
 				t.Cleanup(local.Close)
 				sidecar := httptest.NewServer(runner.Handler(local))
 				t.Cleanup(sidecar.Close)
@@ -496,7 +494,7 @@ func TestAppOrigins(t *testing.T) {
 		var rt func(st *store.Store) runner.Runtime
 		if viaSidecar {
 			rt = func(st *store.Store) runner.Runtime {
-				local := &runner.Local{Dir: st.AppsDir(), GoBinary: filepath.Join(runtime.GOROOT(), "bin", "go"), Remote: true}
+				local := localRunner(st.AppsDir(), true)
 				t.Cleanup(local.Close)
 				sidecar := httptest.NewServer(runner.Handler(local))
 				t.Cleanup(sidecar.Close)

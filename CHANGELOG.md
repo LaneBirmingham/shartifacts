@@ -27,6 +27,7 @@ Cheaper context for every connected agent: the same tools, fields and behaviour,
 ### Changed
 
 - **Agents spend less context on shartifacts** ([docs/agents.md](docs/agents.md)). The instructions an agent receives when it connects are now a short summary: the artifact kinds, `base_version` before updating, what sandboxed previews refuse, the design system, archiving, links and the upload URL and `curl` command as before. The full guide they used to carry is the MCP resource `shartifacts://guide` (`resources/list`, `resources/read`), unchanged, for agents to read when they need it. Tool fields whose meaning is plain from their name and type, such as `title`, `kind`, `limit` and `note`, no longer carry a description; the ones with rules, defaults or valid values keep theirs. The tools, their fields and their behaviour are unchanged.
+- **The test suite is about twice as quick** ([docs/development.md](docs/development.md#continuous-integration-and-deploying)). Each test that deploys an app builds a Go backend in its own temporary apps directory, and every one of those builds compiled the standard library again — eight seconds a backend. They now share one Go build cache for the whole test binary, which takes the race-enabled suite from about forty seconds to twenty-five on a laptop, and CI's `go test -race` step from 151 seconds to 38.
 
 ## 0.1.0 — 2026-10-22
 
