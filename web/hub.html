@@ -118,6 +118,7 @@
           </div>
           <div class="app-tools">
             <button type="button" class="reload quiet" title="Reload the app" aria-label="Reload">⟳</button
+            ><button type="button" class="quiet focus-app" title="Fill the window with the app">⤢ Focus</button
             ><a class="button quiet open" target="_blank" rel="noopener" title="Open on its own">Open ↗</a
             ><button type="button" class="quiet" data-drawer="versions">Versions</button
             ><button type="button" class="quiet" data-drawer="logs">Logs<span class="badge" hidden></span></button
@@ -216,6 +217,14 @@
     </dialog>
 
 
+    <div id="focus-bar" class="focus-bar" hidden>
+      <button type="button" class="focus-handle" aria-label="Show focus controls"></button>
+      <div class="focus-pill" role="toolbar" aria-label="Focus">
+        <span class="focus-icon" aria-hidden="true"></span><span class="focus-name"></span
+        ><span class="focus-hint">Esc twice to leave</span
+        ><button type="button" class="focus-exit" aria-label="Leave focus">Exit ×</button>
+      </div>
+    </div>
     <div id="toast" role="status" hidden></div>
   </body>
 </html>

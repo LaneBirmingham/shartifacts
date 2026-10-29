@@ -2,6 +2,8 @@
 
 Apps are full-stack micro frontends. Each opens as a tab on the home page, keeps running while you switch tabs, and has every deployment as a numbered, immutable version.
 
+**Focus.** **⤢ Focus** in an app's toolbar fills the window with the app: the same frame grows over the hub, so nothing reloads and the hub keeps its storage. A pill at the top edge names the app and tucks into a small handle after a moment; tap the handle to bring it back. Leave with the pill's **Exit**, Back, **Esc** (twice when the app has the keyboard, since the app's own menus and dialogs get the first press) or by switching tabs. `/apps/{id}?focus` opens an app focused, which makes a good bookmark or home-screen link. In the installed app (`display-mode: standalone`), where there is no browser around a page, **Open ↗** is hidden so it cannot strand you on the bare app page; Focus does that job.
+
 **The stack is fixed**, so every app builds and deploys the same way:
 
 | Part | What you deploy | What shartifacts does |

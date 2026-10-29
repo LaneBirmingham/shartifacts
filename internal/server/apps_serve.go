@@ -542,7 +542,8 @@ func sessionClaims(c appCtx, viewer, bind string) session {
 // base URL and viewer), adds the session token to requests under the app's base (form
 // submissions included), gives
 // in-memory localStorage/sessionStorage when the sandbox refuses the real ones, opens
-// outside links in a new tab, and reports errors to the hub showing the page.
+// outside links in a new tab, and reports errors to the hub showing the page. It tells the
+// hub of each Escape (the key's name alone), which a focused hub tab counts to leave focus.
 //
 // A hub tab keeps that storage: the hub names the page's frame with the app's saved
 // localStorage (and the tab's sessionStorage), which the page reads synchronously before
@@ -573,6 +574,7 @@ addEventListener('unhandledrejection',e=>report('unhandled rejection: '+String(e
 addEventListener('securitypolicyviolation',e=>report('blocked by the sandbox: '+e.blockedURI+' ('+e.effectiveDirective+')'));
 document.addEventListener('submit',e=>{const f=e.target;if(f&&f.action&&ours(f.action))f.action=tag(f.action)},true);
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[href]');if(!a||e.defaultPrevented)return;const h=a.getAttribute('href');if(!h||h[0]==='#'||/^javascript:/i.test(h)||a.hasAttribute('download'))return;if(ours(a.href))return;if(!a.target||/^_(self|parent|top)$/i.test(a.target)){a.target='_blank';a.rel='noopener noreferrer'}});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&parent!==window)parent.postMessage({type:'shartifacts-app-key',app:C.app,key:'Escape'},'*')},true);
 addEventListener('load',()=>{if(parent!==window)parent.postMessage({type:'shartifacts-app-ready',app:C.app,version:C.version,title:document.title},'*')});
 })();`
 
