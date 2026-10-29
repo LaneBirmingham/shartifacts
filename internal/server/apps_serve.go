@@ -65,7 +65,8 @@ type appCtx struct {
 	label   string // "live", the version number, or "share"
 	base    string // URL path of the version's root, with a trailing slash
 	public  bool   // reached through a share link
-	own     bool   // on the app's own origin (AppOrigin), not a sandbox
+	own     bool   // on the app's own origin (AppOrigin or PrivateAppOrigin), not a sandbox
+	private bool   // on its private hostname (PrivateAppOrigin), at the root
 	share   store.AppShare
 }
 
@@ -79,6 +80,8 @@ type session struct {
 	Viewer  string `json:"v,omitempty"`
 	Bind    string `json:"b,omitempty"`
 	Expires int64  `json:"e"`
+	// Nonce makes each one-time ticket for a private hostname (apps_private.go) unique.
+	Nonce string `json:"n,omitempty"`
 }
 
 func (s *Server) appKey() []byte {
@@ -296,6 +299,10 @@ func (s *Server) serveAppAPI(w http.ResponseWriter, r *http.Request, c appCtx, p
 	if !c.own {
 		out.Header.Del("Cookie")
 	}
+	// A private hostname's sign-in is shartifacts', not the app's.
+	if c.private {
+		withoutCookies(out.Header, privateCookie, securePrivateCookie)
+	}
 	out.URL.Path = "/" + p
 	out.URL.RawPath = ""
 	q := out.URL.Query()
@@ -497,8 +504,9 @@ func (s *Server) writeAppPage(w http.ResponseWriter, r *http.Request, c appCtx, 
 	}
 	// With sign-in on, a page loaded without it (by its own opaque-origin frame, or by
 	// someone who only knows the app's id) gets no session, so its backend refuses it.
+	// On its private hostname the page's calls carry that hostname's cookie instead.
 	session := ""
-	if !c.public && s.signedIn(r) {
+	if !c.public && !c.private && s.signedIn(r) {
 		session = s.signSession(sessionClaims(c, viewer, s.boundTo(r)))
 	}
 	cfgJSON, _ := json.Marshal(cfg)
@@ -506,6 +514,10 @@ func (s *Server) writeAppPage(w http.ResponseWriter, r *http.Request, c appCtx, 
 	inject := `<base href="` + html.EscapeString(pageBase) + `">`
 	if baseTag.Match(page) {
 		inject = ""
+	}
+	if c.private {
+		// At the root of an origin of its own the app installs as itself (apps_private.go).
+		inject += `<link rel="manifest" href="/_shartifacts/manifest.webmanifest"><link rel="apple-touch-icon" href="/_shartifacts/icon.png">`
 	}
 	inject += "<script>" + strings.NewReplacer("__CONFIG__", string(cfgJSON), "__SESSION__", string(sessJSON), "</", `<\/`).Replace(appRuntime) + "</script>"
 	text := string(page)
@@ -660,23 +672,29 @@ func (s *Server) appHost(r *http.Request) (string, bool) {
 	return label, ok
 }
 
-// checkAppLabel refuses a label for an app's public links that this server cannot give it.
+// checkAppLabel refuses a label for an app's hostnames, public and private, that this server
+// cannot give it.
 // The store checks its shape and that no other app has it.
 func (s *Server) checkAppLabel(label *string) error {
 	if label == nil || *label == "" {
 		return nil
 	}
-	if s.AppOrigin == "" {
-		return errors.New("app hostnames are off on this server (set SHARTIFACTS_APP_ORIGIN, -app-origin, to turn them on), so public links have no label to set")
+	if s.AppOrigin == "" && s.PrivateAppOrigin == "" {
+		return errors.New("app hostnames are off on this server (set SHARTIFACTS_APP_ORIGIN, -app-origin, or SHARTIFACTS_PRIVATE_APP_ORIGIN, -private-app-origin, to turn them on), so there is no label to set")
 	}
-	host := strings.ToLower(strings.Replace(strings.SplitN(s.AppOrigin, "://", 2)[1], "*", *label, 1))
 	taken := []string{s.ShareOrigin, s.PublicOrigin}
 	for _, h := range s.AllowedHosts {
 		taken = append(taken, "//"+strings.TrimSpace(h))
 	}
-	for _, o := range taken {
-		if u, err := url.Parse(o); err == nil && strings.EqualFold(u.Hostname(), host) {
-			return fmt.Errorf("label %s would make the links' hostname %s, which this server uses for something else", *label, host)
+	for _, wildcard := range []string{s.AppOrigin, s.PrivateAppOrigin} {
+		if wildcard == "" {
+			continue
+		}
+		host := strings.ToLower(strings.Replace(strings.SplitN(wildcard, "://", 2)[1], "*", *label, 1))
+		for _, o := range taken {
+			if u, err := url.Parse(o); err == nil && strings.EqualFold(u.Hostname(), host) {
+				return fmt.Errorf("label %s would make the app's hostname %s, which this server uses for something else", *label, host)
+			}
 		}
 	}
 	return nil

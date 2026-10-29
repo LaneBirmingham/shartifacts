@@ -69,6 +69,9 @@ func (s *Server) appGuide(ctx context.Context, base string) string {
 		share = "Public links are served at " + s.AppOrigin + "/p/TOKEN/, one hostname per app: * is a generated label unless you give the app one that reads well (deploy_app label when creating, or manage_app op update label), e.g. budget makes " + strings.Replace(s.AppOrigin, "*", "budget", 1) + "/p/TOKEN/. Choose it before sharing: visitors' browser storage and cookies stay with the hostname they used, though its links keep working (they redirect)."
 		storage = "- Browser storage: public links give each app an origin of its own, so localStorage, sessionStorage, IndexedDB and cookies (document.cookie, and the backend's Set-Cookie, kept to that hostname) persist in each visitor's browser as on any site, apart from other apps. Name cookies __Host-... (Secure; Path=/; no Domain) so no other app's page can shadow them. In hub tabs localStorage persists per app in that browser and sessionStorage until the tab closes, with no cookies or IndexedDB; a page opened on its own keeps storage only for the page. Keep state that matters, or that people share, in the backend."
 	}
+	if s.PrivateAppOrigin != "" {
+		share += " Each app also has a private address, " + s.PrivateAppOrigin + "/ with the same label (get_app private_url), for the workspace's people only: it is where an app installs on a phone as an app of its own, with real browser storage. Point people at open_url, which signs them in there."
+	}
 	keep := s.Store.KeepVersionsOrDefault()
 	retention := fmt.Sprintf("Rollback reaches the newest %d versions that built (get_app's oldest_rollback), plus the live version and versions links pin; older versions lose their files. Deploys share unchanged files with the version before, and a Go backend whose files did not change reuses its build, so versions are cheap.", keep)
 	return strings.NewReplacer("{BASE}", base, "{RETENTION}", retention, "{GO}", goLine, "{OS}", info.OS, "{ARCH}", info.Arch, "{RUST}", rustTargetFor(info.OS, info.Arch),
@@ -223,7 +226,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Name        string            `json:"name,omitempty"`
 		Description string            `json:"description,omitempty"`
 		Icon        string            `json:"icon,omitempty" jsonschema:"Creating: one short generic word (chart, list, money, calendar, game, tool) or an emoji"`
-		Label       string            `json:"label,omitempty" jsonschema:"Creating: the subdomain of its public links when apps get hostnames of their own (get_app guide), e.g. budget; lowercase letters, digits and hyphens; default a generated one"`
+		Label       string            `json:"label,omitempty" jsonschema:"Creating: the subdomain of its public links and private address when apps get hostnames of their own (get_app guide), e.g. budget; lowercase letters, digits and hyphens; default a generated one"`
 		Template    string            `json:"template,omitempty" jsonschema:"Creating: notes starts from a working React + Go app (files you send replace its files)"`
 		BaseVersion int               `json:"base_version,omitempty" jsonschema:"Deploying: the latest version (get_app's latest); a stale one is refused"`
 		Merge       bool              `json:"merge,omitempty" jsonschema:"Deploying: start from the latest version and apply files, remove and edits; otherwise the version is exactly files"`
@@ -287,7 +290,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Description *string            `json:"description,omitempty"`
 		Icon        *string            `json:"icon,omitempty"`
 		Pinned      *bool              `json:"pinned,omitempty"`
-		Label       *string            `json:"label,omitempty" jsonschema:"update: the subdomain of its public links, e.g. budget (lowercase letters, digits, hyphens; empty for the generated one). Links on its old hostnames redirect, but visitors' browser storage stays there, so set it before sharing"`
+		Label       *string            `json:"label,omitempty" jsonschema:"update: the subdomain of its public links and private address, e.g. budget (lowercase letters, digits, hyphens; empty for the generated one). Links on its old hostnames redirect, but visitors' browser storage stays there, so set it before sharing"`
 		Env         map[string]*string `json:"env,omitempty" jsonschema:"update: backend variables and secrets to set (UPPER_SNAKE) or remove (null); values are never shown again; backends restart"`
 		// call
 		Method  string            `json:"method,omitempty"`

@@ -61,7 +61,32 @@ The hub page for an app (`/apps/{id}`) links that app's manifest in the HTML it 
 
 The same `https://` requirement as [installing the workspace](install.md#install-it-on-your-phone) applies.
 
-**Browser storage.** App pages run with an opaque origin, so the browser gives them no storage of their own. In a hub tab, the hub keeps each app's `localStorage` for it, per app and per browser (in the hub's IndexedDB), and `sessionStorage` while the tab stays open. A page opened on its own keeps both only until it reloads. Cookies never pass to or from a backend except on an app's own origin.
+On Android this often fails once the workspace itself is installed: `/apps/{id}` lies inside the workspace's scope (`/`), and Chrome then treats the page as part of the installed shartifacts app ("Open in shartifacts") instead of offering a second one. A [private address](#a-private-address-for-each-app) avoids that, and with one set, **⤓ Install** uses it.
+
+### A private address for each app
+
+With `SHARTIFACTS_PRIVATE_APP_ORIGIN=https://*.apps.example.com`, every app also answers at the root of a hostname of its own, by the same label its public links use: `https://budget.apps.example.com/`. Its pages, `api/` and the rest are there, at `/` rather than under `/run/{id}/live/`. It is private:
+
+- **Who reaches it.** The same people as the workspace: LAN, tailnet and loopback clients, and nobody a proxy forwards from a public address (unless `SHARTIFACTS_AUTH_PROXY`). The public listener never serves it, whatever `Host` arrives. Only the app's own pages call it (as on its [public hostname](sharing.md#apps-on-hostnames-of-their-own)): other sites, other apps' hostnames and the workspace are refused.
+- **Sign-in.** With [sign-in](security.md#sign-in) on, the hostname asks for a sign-in of its own, because the workspace's session cookie stays on the workspace's hostname. A browser gets one by way of the workspace: `/apps/{id}/open` (signed in there) sends it to the app's hostname with a one-time ticket good for a minute, which is swapped for a host-only `__Host-shartifacts_app` cookie. That cookie is bound to the workspace session, so signing out of the workspace, or a new password, ends it too. Opening the address without one sends the browser to the workspace (`SHARTIFACTS_PUBLIC_ORIGIN`) to sign in and back. The backend never sees the cookie.
+- **What it gives the app.** An origin of its own: real `localStorage`, `IndexedDB` and cookies, apart from every other app's, and a manifest at `/_shartifacts/manifest.webmanifest` whose scope is the whole hostname, so it installs as itself whatever else is installed. Same-origin calls need no session token. `/vendor/` and `/media/` serve the bundled libraries and the workspace's media, unless the app has files there; `/_shartifacts/` is shartifacts' own.
+
+**⤓ Install** in an app's tab, and `get_app`'s `open_url`, open the app there signed in; then use the browser's install (Chrome on Android: **⋮ → Install app**). An app's **Settings** show the address, and its **Subdomain** sets the label. Changing it moves the address: the old one redirects, but storage and an installed app stay with the old hostname, so choose the label before installing.
+
+It needs, like the [public app hostnames](sharing.md#apps-on-hostnames-of-their-own):
+
+1. **Wildcard DNS** for `*.apps.example.com` that only your network resolves to the server: a local DNS record (Pi-hole, your router), or a public record pointing at a private or tailnet address (`192.168.1.20`, `100.x.y.z`).
+2. **An `https://` certificate** for `*.apps.example.com`, since phones install only from `https://`. Let's Encrypt issues wildcards by DNS challenge, so the hostnames never need to be reachable from the internet.
+3. **A private reverse proxy** that terminates TLS for those names and forwards them, with their `Host`, to the workspace port (`8080`), never to the public listener. Keep it reachable only from your LAN or tailnet, as for the workspace.
+
+```text
+SHARTIFACTS_PUBLIC_ORIGIN=https://shartifacts.example.com
+SHARTIFACTS_PRIVATE_APP_ORIGIN=https://*.apps.example.com
+```
+
+It must be a wildcard of its own: shartifacts refuses one that equals `SHARTIFACTS_APP_ORIGIN` or covers the workspace or share hostname.
+
+**Browser storage.** App pages run with an opaque origin, so the browser gives them no storage of their own. In a hub tab, the hub keeps each app's `localStorage` for it, per app and per browser (in the hub's IndexedDB), and `sessionStorage` while the tab stays open. A page opened on its own keeps both only until it reloads. Cookies never pass to or from a backend except on an app's own origin, public or [private](#a-private-address-for-each-app), where pages keep real storage too.
 
 ## Where backends run
 

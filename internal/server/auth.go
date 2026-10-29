@@ -122,10 +122,14 @@ func credentialFrom(r *http.Request) (credential, bool) {
 }
 
 // signedIn reports whether a workspace request may act as the owner: sign-in is off, or
-// guard found a valid session or token on it.
+// guard found a valid session or token on it, or, on an app's private hostname, that
+// hostname's cookie.
 func (s *Server) signedIn(r *http.Request) bool {
 	if !s.signInOn() {
 		return true
+	}
+	if v, ok := privateVisitOf(r); ok {
+		return v.signed
 	}
 	_, ok := credentialFrom(r)
 	return ok

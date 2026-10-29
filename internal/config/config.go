@@ -9,6 +9,10 @@
 //     your own serves read-only artifact links and public app links, nothing else.
 //     -app-origin adds a hostname per app under a wildcard, so app pages keep browser storage.
 //
+// -private-app-origin works in either mode: a wildcard giving each app a private address of
+// its own (https://budget.apps.example.com), for the same people as the workspace, where it
+// installs on a phone as an app of its own.
+//
 // -public-origin is independent of both: the https:// address people use for the private
 // workspace when a TLS-terminating proxy (tailscale serve, Caddy, nginx) fronts it.
 package config
@@ -43,6 +47,9 @@ type Config struct {
 	PublicOrigin string
 	ShareOrigin  string
 	AppOrigin    string
+	// PrivateAppOrigin is a wildcard origin giving each app a private address of its own,
+	// answered like the workspace: LAN, tailnet and loopback clients, signed in.
+	PrivateAppOrigin string
 	// AuthProxy accepts workspace requests a proxy forwards from public addresses, for a
 	// proxy that authenticates people itself.
 	AuthProxy     bool
@@ -83,6 +90,7 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.StringVar(&c.PublicOrigin, "public-origin", "", "the https:// address people use for the workspace when a TLS-terminating proxy fronts it, e.g. https://myserver.tailnet.ts.net (tailscale serve) or https://shartifacts.example.com. Links agents hand out use it. Empty when people reach the app directly")
 	fs.StringVar(&c.ShareOrigin, "share-origin", "", "public hostname for read-only artifact links and public app links, e.g. https://share.example.com. On it the server answers only share pages, never the workspace. Empty keeps everything private")
 	fs.StringVar(&c.AppOrigin, "app-origin", "", "with -share-origin: a wildcard origin giving each app's public links a hostname of its own, e.g. https://*.share.example.com, so app pages keep localStorage, IndexedDB and cookies. Needs wildcard DNS and certificates (see docs/sharing.md)")
+	fs.StringVar(&c.PrivateAppOrigin, "private-app-origin", "", "a wildcard origin giving each app a private address of its own, e.g. https://*.apps.example.com, at the root of which it installs on a phone as an app of its own. It answers only who the workspace answers (LAN, tailnet, loopback, and signed in when sign-in is on), never the internet. Needs wildcard DNS and a certificate (see docs/apps.md)")
 	fs.BoolVar(&c.AuthProxy, "auth-proxy", false, "the reverse proxy in front of the workspace authenticates everyone it forwards (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests a proxy forwards from a public address are refused, because the workspace is for private networks, with or without its own sign-in")
 	fs.BoolVar(&c.NoChunkUpload, "no-chunk-upload", false, "hide the base64 chunked-upload MCP tools to save agent context (the HTTP upload stays available)")
 	fs.StringVar(&c.ClaudeModel, "claude-model", "claude-opus-5-5", "model behind window.claude.complete and claude.use(\"sample\"), which are on only when ANTHROPIC_API_KEY is set")
@@ -203,9 +211,12 @@ func (c *Config) check() error {
 	if c.AppOrigin, err = origin("app-origin", c.AppOrigin); err != nil {
 		return err
 	}
+	if c.PrivateAppOrigin, err = origin("private-app-origin", c.PrivateAppOrigin); err != nil {
+		return err
+	}
 	for _, o := range []struct{ name, v string }{{"public-origin", c.PublicOrigin}, {"share-origin", c.ShareOrigin}} {
 		if strings.Contains(o.v, "*") {
-			return fmt.Errorf("-%s %q cannot hold a wildcard; only -app-origin does", o.name, o.v)
+			return fmt.Errorf("-%s %q cannot hold a wildcard; only -app-origin and -private-app-origin do", o.name, o.v)
 		}
 	}
 	// The workspace's names: everything a person on the network may open it by.
@@ -220,21 +231,50 @@ func (c *Config) check() error {
 	if share != "" && contains(workspace, share) {
 		return fmt.Errorf("-share-origin %s is also a workspace hostname (-allowed-hosts or -public-origin): the share hostname must be a name of its own, the only one the internet reaches", c.ShareOrigin)
 	}
-	if c.AppOrigin == "" {
+	var appSuffix string
+	if c.AppOrigin != "" {
+		if c.ShareOrigin == "" {
+			return errors.New("-app-origin needs -share-origin as well: app links fall back to the share hostname")
+		}
+		if appSuffix, err = wildcardSuffix("app-origin", c.AppOrigin, "share"); err != nil {
+			return err
+		}
+		if err := covers("app-origin", c.AppOrigin, appSuffix, append(workspace, share), "https://*."+share); err != nil {
+			return err
+		}
+	}
+	if c.PrivateAppOrigin == "" {
 		return nil
 	}
-	if c.ShareOrigin == "" {
-		return errors.New("-app-origin needs -share-origin as well: app links fall back to the share hostname")
+	suffix, err := wildcardSuffix("private-app-origin", c.PrivateAppOrigin, "apps")
+	if err != nil {
+		return err
 	}
-	suffix, ok := strings.CutPrefix(originHost(c.AppOrigin), "*.")
-	// A wildcard needs a name under it (not *.com), except *.localhost, which browsers resolve
-	// to this machine for testing.
+	// The public and private app hostnames must never be the same names: a private one
+	// reached through the public wildcard's DNS and proxy would be on the internet.
+	if appSuffix != "" && suffix == appSuffix {
+		return fmt.Errorf("-private-app-origin %s and -app-origin %s are the same hostnames; private app addresses need a wildcard of their own, kept off the internet, e.g. https://*.apps.example.com", c.PrivateAppOrigin, c.AppOrigin)
+	}
+	return covers("private-app-origin", c.PrivateAppOrigin, suffix, append(workspace, share), "https://*.apps.example.com")
+}
+
+// wildcardSuffix is the domain under an app origin's leading wildcard label. A wildcard needs
+// a name under it (not *.com), except *.localhost, which browsers resolve to this machine for
+// testing.
+func wildcardSuffix(name, o, example string) (string, error) {
+	suffix, ok := strings.CutPrefix(originHost(o), "*.")
 	if !ok || suffix == "" || strings.Contains(suffix, "*") || !strings.Contains(suffix, ".") && suffix != "localhost" {
-		return fmt.Errorf("-app-origin %q needs one leading wildcard label, e.g. https://*.share.example.com", c.AppOrigin)
+		return "", fmt.Errorf("-%s %q needs one leading wildcard label, e.g. https://*.%s.example.com", name, o, example)
 	}
-	for _, h := range append(workspace, share) {
+	return suffix, nil
+}
+
+// covers refuses an app wildcard that takes in one of hosts: that name would then serve only
+// an app.
+func covers(name, o, suffix string, hosts []string, example string) error {
+	for _, h := range hosts {
 		if label, ok := strings.CutSuffix(h, "."+suffix); ok && label != "" && !strings.Contains(label, ".") {
-			return fmt.Errorf("%s is one of the app hostnames -app-origin %s covers, so it would serve only app links; give apps a wildcard of their own, e.g. https://*.%s", h, c.AppOrigin, share)
+			return fmt.Errorf("%s is one of the app hostnames -%s %s covers, so it would serve only app links; give apps a wildcard of their own, e.g. %s", h, name, o, example)
 		}
 	}
 	return nil
@@ -314,6 +354,9 @@ func (c *Config) Summary() []string {
 		if c.AppOrigin != "" {
 			lines = append(lines, "app links: each app on a hostname of its own under "+c.AppOrigin)
 		}
+	}
+	if c.PrivateAppOrigin != "" {
+		lines = append(lines, "private app addresses: each app at the root of a hostname of its own under "+c.PrivateAppOrigin+", for the same people as the workspace (keep its DNS and proxy off the internet)")
 	}
 	if c.PublicOrigin != "" {
 		lines = append(lines, "workspace address: "+c.PublicOrigin+" (through a TLS-terminating proxy, which must stay reachable only from your LAN or tailnet)")

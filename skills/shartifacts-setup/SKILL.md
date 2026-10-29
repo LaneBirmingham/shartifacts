@@ -59,6 +59,8 @@ Map the answers to a plan with this table, then show it to the person: the mode,
 
 For app hostnames on Cloudflare, explain the certificate constraint in `docs/sharing.md#cloudflare-tunnel` and let the person choose.
 
+If they want apps installed on a phone as apps of their own, add `SHARTIFACTS_PRIVATE_APP_ORIGIN` (`https://*.apps.<their domain>`) to any plan with a domain and a private HTTPS proxy: a wildcard DNS record only their network resolves (or one pointing at a private or tailnet address), a wildcard certificate by DNS challenge, and the proxy forwarding those names to port **8080**, never 8081. It is never public. See `docs/apps.md#a-private-address-for-each-app`.
+
 ## 3. Check the machine
 
 Run these on the target, read-only:

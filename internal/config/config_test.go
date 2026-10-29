@@ -136,6 +136,12 @@ func TestRefusesUnsafeOrigins(t *testing.T) {
 		// Nor may the app wildcard swallow the workspace or the share hostname.
 		{[]string{"-share-origin", "share.example.com", "-app-origin", "*.example.com"}, "app hostnames"},
 		{[]string{"-share-origin", "share.example.net", "-app-origin", "*.example.com", "-public-origin", "box.example.com"}, "app hostnames"},
+		// Private app addresses: a wildcard of their own, apart from the public one, that
+		// takes in neither the workspace nor the share hostname.
+		{[]string{"-private-app-origin", "https://apps.example.com"}, "leading wildcard"},
+		{[]string{"-private-app-origin", "https://*.example.com", "-public-origin", "https://box.example.com"}, "app hostnames"},
+		{[]string{"-private-app-origin", "https://*.example.com", "-share-origin", "share.example.com"}, "app hostnames"},
+		{[]string{"-share-origin", "share.example.com", "-app-origin", "*.share.example.com", "-private-app-origin", "*.share.example.com"}, "same hostnames"},
 		{[]string{"stray"}, "unexpected argument"},
 	} {
 		if _, err := parse(t, tc.args, nil); err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -144,6 +150,16 @@ func TestRefusesUnsafeOrigins(t *testing.T) {
 	}
 	// A dedicated domain: share on the apex, apps one label under it.
 	if _, err := parse(t, []string{"-share-origin", "example.net", "-app-origin", "*.example.net", "-public-origin", "box.example.com"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Private app addresses need no sharing, and sit beside public ones.
+	if c, err := parse(t, []string{"-private-app-origin", "apps.example.com", "-public-origin", "box.example.com"}, nil); err == nil {
+		t.Fatalf("a private wildcard without its *: %+v", c)
+	}
+	if c, err := parse(t, nil, map[string]string{"SHARTIFACTS_PRIVATE_APP_ORIGIN": "*.apps.example.com/", "SHARTIFACTS_PUBLIC_ORIGIN": "box.example.com"}); err != nil || c.PrivateAppOrigin != "https://*.apps.example.com" || c.Mode() != "private" {
+		t.Fatalf("private app origin: %+v %v", c, err)
+	}
+	if _, err := parse(t, []string{"-share-origin", "share.example.com", "-app-origin", "*.share.example.com", "-private-app-origin", "*.apps.example.com", "-public-origin", "box.example.com"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Local testing: browsers resolve every *.localhost name to this machine.

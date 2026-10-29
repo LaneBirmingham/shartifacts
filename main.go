@@ -60,7 +60,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, AuthProxy: cfg.AuthProxy, Auth: signIn}
+	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, PrivateAppOrigin: cfg.PrivateAppOrigin, AuthProxy: cfg.AuthProxy, Auth: signIn}
 	for _, line := range cfg.Summary() {
 		log.Print(line)
 	}

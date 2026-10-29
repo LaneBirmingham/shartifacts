@@ -50,6 +50,10 @@ type Server struct {
 	// IndexedDB and cookies, apart from every other app's. Empty serves app links on
 	// ShareOrigin, in the opaque-origin sandbox.
 	AppOrigin string
+	// PrivateAppOrigin gives each app a private address of its own at the root of a hostname
+	// (e.g. https://*.apps.example.com), answered like the workspace, where it installs on a
+	// phone as an app of its own (apps_private.go). Empty turns them off.
+	PrivateAppOrigin string
 	// AuthProxy accepts workspace requests a proxy forwards from public addresses: the
 	// operator says that proxy authenticates people. Otherwise they are refused (forwarded.go).
 	AuthProxy bool
@@ -72,6 +76,7 @@ type Server struct {
 	appSessionKey []byte
 	appLabelOnce  sync.Once
 	appLabelKey   []byte
+	enterTickets  enterTickets
 	appSites      sync.Map
 	appBuilds     sync.Map
 	appErrors     appErrorLog
@@ -342,7 +347,15 @@ func (s *Server) build() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
-	return s.guard(mux)
+	// An app's private hostname serves only that app (apps_private.go); guard has
+	// already decided who reaches it.
+	return s.guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if v, ok := privateVisitOf(r); ok {
+			s.servePrivateApp(w, r, v.app)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 }
 
 // etag hashes an embedded file once; the web assets never change while running.
@@ -484,6 +497,10 @@ func (s *Server) clientScheme(r *http.Request) string {
 		scheme, _, _ := strings.Cut(s.AppOrigin, "://")
 		return scheme
 	}
+	if _, ok := s.privateLabelOf(r); ok {
+		scheme, _, _ := strings.Cut(s.PrivateAppOrigin, "://")
+		return scheme
+	}
 	if s.PublicOrigin != "" {
 		if u, e := url.Parse(s.PublicOrigin); e == nil && strings.EqualFold(u.Host, r.Host) {
 			return u.Scheme
@@ -539,9 +556,18 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "local network access only", 403)
 			return
 		}
+		// An app's private hostname is for the workspace's people only. PublicHandler
+		// answers every name but the public app hostnames as the share hostname, so this
+		// holds only if a later change lets one through.
+		privateName, private := s.privateLabelOf(r)
+		if private && public {
+			http.NotFound(w, r)
+			return
+		}
 		// The reverse proxy asks whether to get a certificate for a hostname (tlsAllowed).
-		// It calls by its own name for this server, so this precedes the Host check.
-		if r.URL.Path == TLSAllowedPath {
+		// It calls by its own name for this server, so this precedes the Host check. On an
+		// app's private hostname the path is the app's.
+		if r.URL.Path == TLSAllowedPath && !private {
 			s.tlsAllowed(w, r)
 			return
 		}
@@ -576,6 +602,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			}
 			allowed = true
 		}
+		allowed = allowed || private
 		if !allowed {
 			http.Error(w, "host not allowed: use a LAN IP or add this hostname to SHARTIFACTS_ALLOWED_HOSTS (-allowed-hosts)", 403)
 			return
@@ -586,13 +613,16 @@ func (s *Server) guard(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if appHost && !s.fromAppItself(r) {
+		// An app's own hostname, public or private, holds its cookies and storage: only its
+		// own pages call it.
+		if (appHost || private) && !s.fromAppItself(r) {
 			http.Error(w, "cross-site request denied", 403)
 			return
 		}
 		// App pages and backends decide for themselves (serveApp): their sandboxed pages
-		// always call cross-origin, and only with the session the page was served.
-		if origin := r.Header.Get("Origin"); origin != "" && !appPath(r.URL.Path) {
+		// always call cross-origin, and only with the session the page was served. On a
+		// private hostname every path is the app's, and the app is the origin.
+		if origin := r.Header.Get("Origin"); origin != "" && (private || !appPath(r.URL.Path)) {
 			u, e := url.Parse(origin)
 			scheme := s.clientScheme(r)
 			if e != nil || u.Host != r.Host || u.Scheme != scheme {
@@ -602,7 +632,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 				}
 			}
 		}
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" && !appPath(r.URL.Path) {
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" && (private || !appPath(r.URL.Path)) {
 			// Following a link into the app (chat apps, bookmarks, redirects) is a normal
 			// top-level navigation, not a cross-site request. Browsers still mark it
 			// "cross-site", but it also carries Sec-Fetch-Mode: navigate with
@@ -620,8 +650,14 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			}
 		}
 		// Last, with every network check passed: the workspace's own sign-in, when a
-		// password is set (auth.go). Share and app hostnames are public by design.
-		if !appHost && !s.isShareHost(r) {
+		// password is set (auth.go), or a private hostname's, which comes from it
+		// (apps_private.go). Share and app hostnames are public by design.
+		if private {
+			var ok bool
+			if r, ok = s.privateGuard(w, r, privateName); !ok {
+				return
+			}
+		} else if !appHost && !s.isShareHost(r) {
 			var ok bool
 			if r, ok = s.signInGate(w, r); !ok {
 				return
