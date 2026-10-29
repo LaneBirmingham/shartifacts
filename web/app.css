@@ -210,10 +210,15 @@ button kbd {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--hairline);
 }
+/* Every scroller here paints its own opaque background, the colour already behind it. Where
+   text is drawn for LCD screens (Chrome on Windows and Linux at 1x), a scroller the browser
+   can see through is not moved on the GPU but re-rastered on every frame it scrolls, which
+   keeps a 120 Hz screen from scrolling at its rate. */
 .filters .tag-chips {
   max-height: 96px;
   overflow-y: auto;
   margin: 0;
+  background: var(--surface-soft);
 }
 /* Select mode's actions, which act on what is ticked in the list below. */
 .bulk-bar {
@@ -375,6 +380,8 @@ button kbd {
   overflow: auto;
   margin: 0 -10px;
   padding: 0 10px;
+  /* Opaque, so it scrolls on the GPU (see .filters .tag-chips). */
+  background: var(--surface-soft);
 }
 .library-item {
   width: 100%;
@@ -791,6 +798,7 @@ h1 em {
   overflow: auto;
   font: 12px/1.6 var(--font-code);
   padding: 8px 0;
+  background: var(--surface-dark);
 }
 .diff-line {
   display: grid;
@@ -872,7 +880,7 @@ h1 em {
 .source-pane textarea {
   flex: 1;
   resize: none;
-  background: transparent;
+  background: var(--surface-dark);
   color: var(--on-dark);
   border: 0;
   border-radius: 0;
@@ -1552,6 +1560,7 @@ iframe[data-ready="false"] {
   margin-top: 20px;
   max-height: 40vh;
   overflow-y: auto;
+  background: var(--canvas);
 }
 .media-item {
   border-top: 1px solid var(--hairline);
@@ -1906,6 +1915,7 @@ body:has(#artifact:not([hidden])) .topbar-gap { display: block; flex: 1 0 0; }
   min-height: 0;
   overflow-y: auto;
   padding: 18px 20px 28px;
+  background: var(--canvas);
 }
 .panel-body .artifact-description { font-size: 15px; margin: 0 0 12px; }
 .props {

@@ -85,6 +85,27 @@ async function editSource() {
   if (!(await page.locator("#edit").isVisible())) await view("split");
   await page.getByRole("button", { name: "Edit source", exact: true }).click();
 }
+// The page's scrolling elements that paint no opaque background of their own. Where text is
+// drawn for LCD screens (Chrome on Windows and Linux at 1x), the browser re-rasters such a
+// scroller on every frame it moves instead of scrolling it on the GPU.
+function seeThroughScrollers() {
+  return page.evaluate(() => {
+    const ink = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+    const opaque = (color) => {
+      ink.clearRect(0, 0, 1, 1);
+      ink.fillStyle = color;
+      ink.fillRect(0, 0, 1, 1);
+      return ink.getImageData(0, 0, 1, 1).data[3] === 255;
+    };
+    return [...document.querySelectorAll("*")]
+      .filter((el) => {
+        const s = getComputedStyle(el);
+        const scrolls = (/auto|scroll/.test(s.overflowY) && el.scrollHeight > el.clientHeight) || (/auto|scroll/.test(s.overflowX) && el.scrollWidth > el.clientWidth);
+        return scrolls && el !== document.scrollingElement && el.getClientRects().length > 0 && !opaque(s.backgroundColor);
+      })
+      .map((el) => el.id || el.className);
+  });
+}
 // Media, agents and sign-in live in the menu at the foot of the sidebar.
 async function sidebarMenu(name) {
   if ((await page.locator("#toggle-sidebar-menu").getAttribute("aria-expanded")) !== "true")
@@ -860,9 +881,12 @@ try {
   // Bulk delete refuses what is still in the library.
   assert.equal((await api("/api/artifacts/bulk", { op: "delete", ids: [scratch[0]] })).failed[0].id, scratch[0]);
   await api(`/api/artifacts/${scratch[0]}?base_version=1`, undefined, "DELETE");
-  // On a short tablet screen the library still starts right under the search.
+  // On a short tablet screen the library still starts right under the search, and it and
+  // every other scroller can move on the GPU.
   await page.setViewportSize({ width: 1024, height: 640 });
   await expect(page.locator("#library .library-item").first()).toBeInViewport();
+  assert.ok(await page.locator("#library").evaluate((el) => el.scrollHeight > el.clientHeight), "the library scrolls");
+  assert.deepEqual(await seeThroughScrollers(), [], "see-through scrollers");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(copyURL);
   for (const size of [
@@ -881,6 +905,7 @@ try {
       true,
       "mobile horizontal overflow",
     );
+    assert.deepEqual(await seeThroughScrollers(), [], "see-through scrollers while editing");
     await expect(
       frame.getByRole("heading", { name: "Imported file" }),
     ).toBeVisible();
@@ -902,6 +927,7 @@ try {
     true,
     "mobile media library overflow",
   );
+  assert.deepEqual(await seeThroughScrollers(), [], "see-through scrollers in the media library");
   await page.screenshot({
     path: "test-results/media-library-mobile.png",
     fullPage: true,

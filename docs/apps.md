@@ -63,6 +63,11 @@ The same `https://` requirement as [installing the workspace](install.md#install
 
 On Android this often fails once the workspace itself is installed: `/apps/{id}` lies inside the workspace's scope (`/`), and Chrome then treats the page as part of the installed shartifacts app ("Open in shartifacts") instead of offering a second one. A [private address](#a-private-address-for-each-app) avoids that, and with one set, **⤓ Install** uses it.
 
+**Smooth scrolling.** An app's own page scrolls on the GPU in a hub tab as it does opened on its own; the hub adds nothing to a scroll. Two things in an app's code keep it from a 120 Hz screen's rate, and the build guide tells agents to avoid both:
+
+- **A see-through scroller.** Where text is drawn for LCD screens (Chrome on Windows and Linux, at less than 1.5× scale), the browser moves a scrolling element on the GPU only if it paints an opaque background of its own. One it can see through is re-rastered on every frame it scrolls. A page's own scroll is exempt; a panel with `overflow: auto` is not. The workspace's own scrollers (the apps home, the library, panels and drawers) each paint the colour behind them for the same reason.
+- **Motion driven by `requestAnimationFrame`.** App pages are cross-origin frames in the hub, and Safari runs `requestAnimationFrame` in a cross-origin frame at half rate until the person taps inside it (scrolling doesn't count). CSS transitions and animations of `transform` and `opacity` aren't held back that way, and native scrolling with `scroll-snap` swipes between screens without any script.
+
 ### A private address for each app
 
 With `SHARTIFACTS_PRIVATE_APP_ORIGIN=https://*.apps.example.com`, every app also answers at the root of a hostname of its own, by the same label its public links use: `https://budget.apps.example.com/`. Its pages, `api/` and the rest are there, at `/` rather than under `/run/{id}/live/`. It is private:
