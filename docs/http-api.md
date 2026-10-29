@@ -71,6 +71,7 @@ curl -H 'Content-Type: application/json' http://localhost:8080/api/artifacts/bul
 | `POST /api/apps/{id}/shares`, `DELETE /api/app-shares/{token}` | `{version, read_only}` (0 follows live) | Public app links |
 | `GET /api/apps/guide` | | The build contract as text |
 | `GET /apps/{id}/manifest.webmanifest`, `GET /apps/{id}/icon.png`, `GET /apps/{id}/icon-maskable.png` | | The manifest and icons that install one app on its own ([apps.md](apps.md)) |
+| `GET /apps/{id}/open?next=` | | With `SHARTIFACTS_PRIVATE_APP_ORIGIN`: redirects to the app's private address (`private_url` in the app), at the path `next`, signed in there when sign-in is on ([apps.md](apps.md#a-private-address-for-each-app)) |
 | `PUT /api/apps/{id}/launcher-icon?for=` | a square PNG, 192–2048 px, up to 1 MiB | The launcher tile the hub draws; `for` names what it was drawn from (`launcher_icon` in the app) |
 | `GET /api/ports?host=` | | The port registry: `claims` (by host, port and protocol) and `hosts`, every machine name in use ([ports.md](ports.md)) |
 | `POST /api/ports` | `{host, port, from, protocol, service, owner, note}` | Claim a port (`201`), or update the claim the same service holds (`200`). Without `port`, the lowest free one at or above `from`. A port another service holds is `409` with `code: "port_taken"`, `holder` and `next_free`. `owner` defaults to the agent token's name |

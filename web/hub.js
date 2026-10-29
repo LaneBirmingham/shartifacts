@@ -92,6 +92,7 @@ const state = {
   runtime: null,
   shareOrigin: "",
   appOrigin: "",
+  privateAppOrigin: "",
   tabs: saved.get("shartifacts.hub.tabs", []),
   active: "home",
   views: new Map(),
@@ -114,6 +115,7 @@ async function refresh() {
   state.runtime = body.runtime;
   state.shareOrigin = body.share_origin || "";
   state.appOrigin = body.app_origin || "";
+  state.privateAppOrigin = body.private_app_origin || "";
   const known = new Set(state.apps.map((a) => a.id));
   for (const id of [...state.tabs]) if (!known.has(id)) closeTab(id);
   renderRuntime();
@@ -406,6 +408,15 @@ window.addEventListener("appinstalled", () => {
 });
 
 async function installApp(id) {
+  // With a private address of its own (SHARTIFACTS_PRIVATE_APP_ORIGIN), the app installs
+  // from there, where no other installed app's scope covers it: the workspace signs this
+  // browser in on the way, and the browser's own install takes it from there.
+  const d = state.views.get(id)?.detail;
+  if (d?.open_url) {
+    await drawLauncherIcon(d).catch(() => {});
+    location.assign(d.open_url);
+    return;
+  }
   if (installEvent && loadedAs === id) {
     const ev = installEvent;
     installEvent = null; // a browser allows each offer once
@@ -846,18 +857,19 @@ function renderSettings(view, body) {
   const save = node("button", "primary", "Save");
   save.type = "submit";
   form.append(field("Name", "name", d.name, 100), field("Description", "description", d.description, 300), field("Icon", "icon", d.icon, 32));
-  if (state.appOrigin) {
-    // Public links' subdomain; empty keeps the generated one. Old hostnames redirect.
-    const sub = field("Link subdomain", "label", d.label, 40);
+  if (state.appOrigin || state.privateAppOrigin) {
+    // The subdomain of the app's hostnames; empty keeps the generated one. Old ones redirect.
+    const sub = field("Subdomain", "label", d.label, 40);
     sub.querySelector("input").placeholder = "generated";
-    sub.append(node("small", "", `Public links: ${d.link_origin}/p/…`));
+    if (d.link_origin) sub.append(node("small", "", `Public links: ${d.link_origin}/p/…`));
+    if (d.private_url) sub.append(node("small", "", `Private address: ${d.private_url}`));
     form.append(sub);
   }
   form.append(pin, save);
   form.onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(form);
-    const label = state.appOrigin ? { label: f.get("label").trim().toLowerCase() } : {};
+    const label = state.appOrigin || state.privateAppOrigin ? { label: f.get("label").trim().toLowerCase() } : {};
     try {
       view.detail = await api(`/api/apps/${view.id}`, {
         method: "PATCH",

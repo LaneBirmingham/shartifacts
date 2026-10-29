@@ -43,9 +43,26 @@ import (
 const launcherIconMax = 1 << 20
 
 func (s *Server) appInstallRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /apps/{id}/manifest.webmanifest", s.appManifest)
-	mux.HandleFunc("GET /apps/{id}/icon.png", func(w http.ResponseWriter, r *http.Request) { s.serveLauncherIcon(w, r, false) })
-	mux.HandleFunc("GET /apps/{id}/icon-maskable.png", func(w http.ResponseWriter, r *http.Request) { s.serveLauncherIcon(w, r, true) })
+	mux.HandleFunc("GET /apps/{id}/manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
+		a, err := s.Store.App(r.PathValue("id"))
+		if err != nil {
+			respond(w, 404, nil, err)
+			return
+		}
+		base := "/apps/" + a.ID
+		s.writeManifest(w, r, a, base, base, base+"?installed", base)
+	})
+	for _, mask := range []bool{false, true} {
+		name := map[bool]string{false: "icon.png", true: "icon-maskable.png"}[mask]
+		mux.HandleFunc("GET /apps/{id}/"+name, func(w http.ResponseWriter, r *http.Request) {
+			a, err := s.Store.App(r.PathValue("id"))
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			s.serveLauncherIcon(w, r, a, mask)
+		})
+	}
 	mux.HandleFunc("PUT /api/apps/{id}/launcher-icon", func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(io.LimitReader(r.Body, launcherIconMax+1))
 		if err != nil {
@@ -124,15 +141,12 @@ type manifestIcon struct {
 	Purpose string `json:"purpose"`
 }
 
-func (s *Server) appManifest(w http.ResponseWriter, r *http.Request) {
-	a, err := s.Store.App(r.PathValue("id"))
-	if err != nil {
-		respond(w, 404, nil, err)
-		return
-	}
-	base := "/apps/" + a.ID
+// writeManifest serves an app's manifest: for the hub's page for the app, or for the root of
+// its private hostname (apps_private.go). icons is the path its icon.png and
+// icon-maskable.png are under.
+func (s *Server) writeManifest(w http.ResponseWriter, r *http.Request, a store.App, icons, id, start, scope string) {
 	whole, maskable := s.launcherIcons(a)
-	icons := []manifestIcon{}
+	list := []manifestIcon{}
 	for _, icon := range []struct {
 		b       []byte
 		file    string
@@ -142,11 +156,12 @@ func (s *Server) appManifest(w http.ResponseWriter, r *http.Request) {
 		// notices that an installed app's icon changed.
 		if n, ok := launcherPNG(icon.b); ok {
 			size := strconv.Itoa(n)
-			icons = append(icons, manifestIcon{Src: base + "/" + icon.file + "?v=" + shortHash(icon.b), Sizes: size + "x" + size, Type: "image/png", Purpose: icon.purpose})
+			list = append(list, manifestIcon{Src: icons + "/" + icon.file + "?v=" + shortHash(icon.b), Sizes: size + "x" + size, Type: "image/png", Purpose: icon.purpose})
 		}
 	}
-	// The id keeps each app apart from the workspace (id "/") and from each other, so all
-	// of them install side by side. The colours are the workspace's paper, which the
+	// On the workspace's hostname, the id keeps each app apart from the workspace (id "/")
+	// and from each other, so all of them install side by side; a private hostname is an
+	// origin of its own, where "/" is the app. The colours are the workspace's paper, which the
 	// drawn tiles share.
 	b, _ := json.Marshal(struct {
 		ID          string         `json:"id"`
@@ -159,7 +174,7 @@ func (s *Server) appManifest(w http.ResponseWriter, r *http.Request) {
 		Background  string         `json:"background_color"`
 		Theme       string         `json:"theme_color"`
 		Icons       []manifestIcon `json:"icons"`
-	}{base, a.Name, a.Name, a.Description, base + "?installed", base, "standalone", "#f9f8f6", "#f9f8f6", icons})
+	}{id, a.Name, a.Name, a.Description, start, scope, "standalone", "#f9f8f6", "#f9f8f6", list})
 	serveRevalidated(w, r, "application/manifest+json", b)
 }
 
@@ -196,12 +211,7 @@ func (s *Server) writeHubAppPage(w http.ResponseWriter, id string) {
 	writeHTML(w, b)
 }
 
-func (s *Server) serveLauncherIcon(w http.ResponseWriter, r *http.Request, mask bool) {
-	a, err := s.Store.App(r.PathValue("id"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
+func (s *Server) serveLauncherIcon(w http.ResponseWriter, r *http.Request, a store.App, mask bool) {
 	b, maskable := s.launcherIcons(a)
 	if mask {
 		b = maskable

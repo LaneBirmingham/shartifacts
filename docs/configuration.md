@@ -2,7 +2,7 @@
 
 Every setting is a command-line flag, and every flag can also be set with an environment variable: `-share-origin` becomes `SHARTIFACTS_SHARE_ORIGIN`. If both are given, the flag on the command line wins. An empty variable counts as unset. With Docker Compose, put the variables in `.env` next to `compose.yaml` ([`.env.example`](../.env.example) lists them with comments). `shartifacts -help` prints the flags.
 
-shartifacts checks its settings together before it listens, and it refuses to start on a combination that would expose or break the workspace. For example, a share hostname that is also a workspace hostname is refused, and so is an app wildcard that covers either of them.
+shartifacts checks its settings together before it listens, and it refuses to start on a combination that would expose or break the workspace. For example, a share hostname that is also a workspace hostname is refused, and so is an app wildcard (public or private) that covers either of them.
 
 ## Access and modes
 
@@ -14,6 +14,7 @@ shartifacts checks its settings together before it listens, and it refuses to st
 | `SHARTIFACTS_SHARE_ORIGIN` | `-share-origin` | | The public hostname for read-only artifact links and public app links, such as `https://share.example.com`. Setting it switches on [public sharing](sharing.md). On that hostname only share pages are served. |
 | `SHARTIFACTS_SHARE_LISTEN` | `-share-listen` | `:8081` | With the share origin set, the *public listener*: it serves only share and app links whatever `Host` arrives, and it is where an edge proxy should forward. `off` turns it off. |
 | `SHARTIFACTS_APP_ORIGIN` | `-app-origin` | | Needs the share origin. A wildcard origin that gives each app's public links a hostname of its own (`https://*.share.example.com`), so app pages keep browser storage and cookies. [More](sharing.md#apps-on-hostnames-of-their-own). |
+| `SHARTIFACTS_PRIVATE_APP_ORIGIN` | `-private-app-origin` | | A wildcard origin that gives each app a private address of its own, at the root of a hostname (`https://*.apps.example.com`). It answers the same people as the workspace, never the internet, and it is where an app installs on a phone as an app of its own. It needs no share origin, and must not be the same wildcard as `SHARTIFACTS_APP_ORIGIN`. [More](apps.md#a-private-address-for-each-app). |
 | `SHARTIFACTS_AUTH_PROXY` | `-auth-proxy` | `false` | Set this only when the proxy in front of the workspace authenticates every request itself (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests that a proxy forwards from a public address are refused. See [security.md](security.md#behind-a-reverse-proxy). |
 
 ## Sign-in

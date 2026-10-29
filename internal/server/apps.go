@@ -148,6 +148,11 @@ func (s *Server) appView(a store.App, base string, logs bool) map[string]any {
 	if s.ShareOrigin != "" && s.AppOrigin != "" {
 		out["link_origin"] = s.appLinkOrigin(a)
 	}
+	if s.PrivateAppOrigin != "" {
+		// Its private address; with sign-in on, open_url signs a browser in there first.
+		out["private_url"] = s.privateOrigin(a) + "/"
+		out["open_url"] = base + "/apps/" + a.ID + "/open"
+	}
 	if a.Live > 0 {
 		out["live_url"] = appURL(base, a.ID, a.Live, true)
 		out["api_url"] = appURL(base, a.ID, a.Live, true) + "api/"
@@ -158,9 +163,10 @@ func (s *Server) appView(a store.App, base string, logs bool) map[string]any {
 func (s *Server) appRoutes(mux *http.ServeMux) {
 	s.appServeRoutes(mux)
 	s.appInstallRoutes(mux)
+	s.privateAppRoutes(mux)
 	origin := func(r *http.Request) string { return s.clientScheme(r) + "://" + r.Host }
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"apps": s.Store.Apps(), "runtime": s.Runtime.Info(r.Context()), "share_origin": s.ShareOrigin, "app_origin": s.AppOrigin})
+		writeJSON(w, 200, map[string]any{"apps": s.Store.Apps(), "runtime": s.Runtime.Info(r.Context()), "share_origin": s.ShareOrigin, "app_origin": s.AppOrigin, "private_app_origin": s.PrivateAppOrigin})
 	})
 	mux.HandleFunc("GET /api/apps/{id}/usage", func(w http.ResponseWriter, r *http.Request) {
 		u, err := s.Store.AppUsage(r.PathValue("id"))
