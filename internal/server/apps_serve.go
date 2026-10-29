@@ -517,7 +517,9 @@ func (s *Server) writeAppPage(w http.ResponseWriter, r *http.Request, c appCtx, 
 	}
 	if c.private {
 		// At the root of an origin of its own the app installs as itself (apps_private.go).
-		inject += `<link rel="manifest" href="/_shartifacts/manifest.webmanifest"><link rel="apple-touch-icon" href="/_shartifacts/icon.png">`
+		// A browser fetches a manifest without cookies unless the link asks for them, and
+		// with sign-in on, the hostname refuses a request without its cookie.
+		inject += `<link rel="manifest" href="/_shartifacts/manifest.webmanifest" crossorigin="use-credentials"><link rel="apple-touch-icon" href="/_shartifacts/icon.png">`
 	}
 	inject += "<script>" + strings.NewReplacer("__CONFIG__", string(cfgJSON), "__SESSION__", string(sessJSON), "</", `<\/`).Replace(appRuntime) + "</script>"
 	text := string(page)

@@ -57,7 +57,7 @@ func TestPrivateAppAddress(t *testing.T) {
 	// Its page, at the root, keeps its origin and links a manifest of its own.
 	page := call(h, "GET", home+"/", "", visit...)
 	body := page.Body.String()
-	if page.Code != 200 || !strings.Contains(body, "<h1>budget</h1>") || !strings.Contains(body, `<base href="/">`) || !strings.Contains(body, `<link rel="manifest" href="/_shartifacts/manifest.webmanifest">`) {
+	if page.Code != 200 || !strings.Contains(body, "<h1>budget</h1>") || !strings.Contains(body, `<base href="/">`) || !strings.Contains(body, `<link rel="manifest" href="/_shartifacts/manifest.webmanifest" crossorigin="use-credentials">`) {
 		t.Fatalf("page: %d %s", page.Code, body)
 	}
 	if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "allow-same-origin") || !strings.Contains(csp, "manifest-src "+home+"/") {
