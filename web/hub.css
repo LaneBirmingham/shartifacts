@@ -244,6 +244,13 @@ code {
   display: flex;
 }
 
+/* An app launched from its own icon (hub.js, installedApp) fills the window: the hub's bar
+   and the app's toolbar belong to the workspace, not to the app. */
+.installed .hub-bar,
+.installed .app-toolbar {
+  display: none;
+}
+
 /* ---- home ------------------------------------------------------------------- */
 .home {
   overflow-y: auto;

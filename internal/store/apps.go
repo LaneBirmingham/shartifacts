@@ -32,6 +32,8 @@ import (
 //	v/{n}/src/      the version's source tree as deployed
 //	v/{n}/out/      what the build made from it (rewritten pages, bundles, the server binary)
 //	data/           the backend's persistent data (DATA_DIR)
+//	launcher.png    the icon a phone shows for the app installed on its own, when no
+//	                version ships one (drawn by the hub, which has the emoji font)
 
 // Limits of one deployment's source tree.
 const (
@@ -77,6 +79,9 @@ type App struct {
 	Description string `json:"description,omitempty"`
 	Icon        string `json:"icon,omitempty"`
 	Pinned      bool   `json:"pinned,omitempty"`
+	// LauncherIcon names what launcher.png was drawn from (the icon, or the name's first
+	// letter), so the hub draws it again only when that changes; "" while there is none.
+	LauncherIcon string `json:"launcher_icon,omitempty"`
 	// Label is the hostname label of the app's public links on the app origin, when it has
 	// one of its own rather than the server's generated one. FormerLabels are the ones it
 	// had before: they stay the app's, so links already handed out still reach it.
@@ -435,6 +440,39 @@ func (s *Store) UpdateApp(id string, m AppMeta) (App, error) {
 		s.indexLabels(a)
 	}
 	return a, err
+}
+
+// SetLauncherIcon keeps png as the app's drawn launcher icon, drawn from key. The caller
+// checks that png is an icon; a change of icon is not a change of the app, so UpdatedAt
+// stays and the app keeps its place in the list.
+func (s *Store) SetLauncherIcon(id, key string, png []byte) (App, error) {
+	if key == "" || len(key) > 64 {
+		return App{}, errors.New("for must name what the icon was drawn from, in 1–64 bytes")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.apps[id]
+	if !ok {
+		return App{}, ErrAppNotFound
+	}
+	if err := writeAtomic(s.AppDir(id), filepath.Join(s.AppDir(id), "launcher.png"), png); err != nil {
+		return App{}, err
+	}
+	a = copyApp(a)
+	a.LauncherIcon = key
+	return s.writeApp(a)
+}
+
+// LauncherIcon reads the app's drawn launcher icon.
+func (s *Store) LauncherIcon(id string) ([]byte, error) {
+	a, err := s.App(id)
+	if err != nil {
+		return nil, err
+	}
+	if a.LauncherIcon == "" {
+		return nil, ErrNotFound
+	}
+	return os.ReadFile(filepath.Join(s.AppDir(id), "launcher.png"))
 }
 
 // DeleteApp removes an app with every version, its data and its links.

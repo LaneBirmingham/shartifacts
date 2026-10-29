@@ -114,6 +114,7 @@ FRONTEND RULES (pages run sandboxed: on the network with an opaque origin, like 
 {STORAGE}
 - No external URLs from pages (CDN scripts, fonts, APIs): call outside services from the backend. Media library URLs (/media/...) work on the network.
 - window.shartifacts = {app, name, version, live, base, api, public, readOnly, user}.
+- Installing: people can install any app on a phone as an app of its own, from its hub tab. Its launcher icon is icon.png at the web root (public/icon.png; a square PNG, 192-2048px), plus icon-maskable.png with the picture inside the middle 80%; without one, a tile of the app's emoji. Lay the page out for a phone-sized window with no browser toolbar.
 
 DEPLOYING
 - deploy_app without an id creates the app from name and files (or template: "notes", a working React + Go app to start from); deploy_app with the id ships every change. A deploy builds the version, starts its backend once, and makes it live; promote:false stages it for preview instead. A failed build never goes live: read error and log in the result, or get_app with logs:true. manage_app op promote rolls back or forward to any ready version.

@@ -400,30 +400,7 @@ func (s *Server) serveAppFile(w http.ResponseWriter, r *http.Request, c appCtx, 
 		http.NotFound(w, r)
 		return
 	}
-	src, out := s.Store.AppSourceDir(c.app.ID, c.version), filepath.Join(s.Store.AppBuildDir(c.app.ID, c.version), "public")
-	root := filepath.Join(src, filepath.FromSlash(site.Root))
-	// find returns the file for a web-root path: built output, the deployed file, or
-	// public/ (Vite's folder of files served at the root).
-	find := func(rel string) (string, bool) {
-		if rel != "" && (serverOnly(path.Join(site.Root, rel), site) || store.ValidAppPath(strings.TrimSuffix(rel, "/")) != nil) {
-			return "", false
-		}
-		for _, dir := range []string{out, root, filepath.Join(root, "public")} {
-			f := filepath.Join(dir, filepath.FromSlash(rel))
-			info, err := os.Stat(f)
-			if err == nil && info.IsDir() {
-				if !strings.HasSuffix(rel, "/") && rel != "" {
-					return "dir", true
-				}
-				f = filepath.Join(f, "index.html")
-				info, err = os.Stat(f)
-			}
-			if err == nil && !info.IsDir() {
-				return f, true
-			}
-		}
-		return "", false
-	}
+	find := func(rel string) (string, bool) { return s.frontendFile(c.app.ID, c.version, site, rel) }
 	rel := clean
 	f, ok := find(rel)
 	if ok && f == "dir" {
@@ -465,6 +442,32 @@ func (s *Server) serveAppFile(w http.ResponseWriter, r *http.Request, c appCtx, 
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeFile(w, r, f)
+}
+
+// frontendFile returns the file for a path under a version's web root: built output, the
+// deployed file, or public/ (Vite's folder of files served at the root). A directory
+// without a trailing slash is "dir", for the caller to redirect.
+func (s *Server) frontendFile(id string, version int, site appSite, rel string) (string, bool) {
+	if rel != "" && (serverOnly(path.Join(site.Root, rel), site) || store.ValidAppPath(strings.TrimSuffix(rel, "/")) != nil) {
+		return "", false
+	}
+	out := filepath.Join(s.Store.AppBuildDir(id, version), "public")
+	root := filepath.Join(s.Store.AppSourceDir(id, version), filepath.FromSlash(site.Root))
+	for _, dir := range []string{out, root, filepath.Join(root, "public")} {
+		f := filepath.Join(dir, filepath.FromSlash(rel))
+		info, err := os.Stat(f)
+		if err == nil && info.IsDir() {
+			if !strings.HasSuffix(rel, "/") && rel != "" {
+				return "dir", true
+			}
+			f = filepath.Join(f, "index.html")
+			info, err = os.Stat(f)
+		}
+		if err == nil && !info.IsDir() {
+			return f, true
+		}
+	}
+	return "", false
 }
 
 var (

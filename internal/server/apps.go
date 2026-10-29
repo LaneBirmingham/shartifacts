@@ -142,6 +142,8 @@ func (s *Server) appView(a store.App, base string, logs bool) map[string]any {
 		// Rollback reaches back to oldest_rollback; versions before it lost their files.
 		"keep_versions": s.Store.KeepVersionsOrDefault(), "oldest_rollback": a.OldestRollback(),
 		"hub_url": base + "/apps/" + a.ID,
+		// The hub draws the launcher icon again when this no longer names the app's icon.
+		"launcher_icon": a.LauncherIcon,
 	}
 	if s.ShareOrigin != "" && s.AppOrigin != "" {
 		out["link_origin"] = s.appLinkOrigin(a)
@@ -155,6 +157,7 @@ func (s *Server) appView(a store.App, base string, logs bool) map[string]any {
 
 func (s *Server) appRoutes(mux *http.ServeMux) {
 	s.appServeRoutes(mux)
+	s.appInstallRoutes(mux)
 	origin := func(r *http.Request) string { return s.clientScheme(r) + "://" + r.Host }
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"apps": s.Store.Apps(), "runtime": s.Runtime.Info(r.Context()), "share_origin": s.ShareOrigin, "app_origin": s.AppOrigin})
