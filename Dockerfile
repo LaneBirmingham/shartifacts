@@ -1,19 +1,30 @@
+# syntax=docker/dockerfile:1
+
 FROM node:26-alpine AS frontend
 WORKDIR /src
 COPY package.json package-lock.json ./
-RUN npm ci
+# The `syntax` directive at the top of the file is BuildKit's frontend, which is what the
+# cache mounts below need: they keep npm's downloads and the Go build cache on the builder
+# between builds instead of inside a layer that is thrown away. A changed .go file then costs
+# a rebuild of the packages that depend on it — a few seconds — rather than of the standard
+# library too. The first build on a machine, and one after a dependency change, still fetches
+# and compiles everything.
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY scripts/build.mjs scripts/ui.jsx scripts/tailwind-compat.js scripts/math.js scripts/
 RUN npm run build
 
 FROM golang:1.26-alpine AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY *.go ./
 COPY internal ./internal
 COPY web ./web
 COPY --from=frontend /src/web/vendor ./web/vendor
-RUN CGO_ENABLED=0 go build -trimpath -o /shartifacts .
+# Any change to the Go sources invalidates the copies above, so this build runs on most
+# deploys; the cache mount is what keeps it quick.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -o /shartifacts .
 
 # The app runner sidecar: the same binary, with the Go toolchain that builds app backends.
 # It runs them with only the apps directory mounted (compose.yaml), never the artifacts.
