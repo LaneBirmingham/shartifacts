@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The workspace scrolls on the GPU on Windows and Linux** ([docs/apps.md](docs/apps.md)). The apps home, the library, the details panel, the source pane, app drawers and the tab strip each paint the colour behind them. Chrome draws text for LCD screens there, and it re-rastered a scroller it could see through on every frame: the apps home cost about 15 raster tasks a frame at 1×, now none. On a 2560×1440 screen at 1× a frame of it takes 2.6 ms instead of 4.2 (a 120 Hz screen allows 8.3), and a third as many frames overrun. Nothing looks different. The app build guide now asks the same of apps' own scrolling panels, and to animate with CSS rather than script: Chrome for Android runs a page's script and `requestAnimationFrame` at 60 Hz on a 120 Hz screen once the finger lifts, and Safari halves `requestAnimationFrame` in a hub tab until the app is tapped.
+
 ### Changed
 
 - **Artifacts and Apps switch in the same place** ([docs/artifacts.md](docs/artifacts.md#editing)). An **Artifacts · Apps** switch sits under the logo on both pages and lights the side you are on, so going to Apps and coming back is the same move. It replaces the Apps entry in the sidebar menu and the Artifacts button in the apps bar; the apps bar's home tab is now the house icon alone.

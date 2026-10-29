@@ -37,6 +37,26 @@ const tool = async (name, args = {}) => {
   assert.ok(!res.isError, `${name}: ${JSON.stringify(res.content)}`);
   return res.structuredContent ?? res.content[0].text;
 };
+// The page's scrolling elements that paint no opaque background of their own. Where text is
+// drawn for LCD screens (Chrome on Windows and Linux at 1x), the browser re-rasters such a
+// scroller on every frame it moves instead of scrolling it on the GPU.
+const seeThroughScrollers = (page) =>
+  page.evaluate(() => {
+    const ink = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+    const opaque = (color) => {
+      ink.clearRect(0, 0, 1, 1);
+      ink.fillStyle = color;
+      ink.fillRect(0, 0, 1, 1);
+      return ink.getImageData(0, 0, 1, 1).data[3] === 255;
+    };
+    return [...document.querySelectorAll("*")]
+      .filter((el) => {
+        const s = getComputedStyle(el);
+        const scrolls = (/auto|scroll/.test(s.overflowY) && el.scrollHeight > el.clientHeight) || (/auto|scroll/.test(s.overflowX) && el.scrollWidth > el.clientWidth);
+        return scrolls && el !== document.scrollingElement && el.getClientRects().length > 0 && !opaque(s.backgroundColor);
+      })
+      .map((el) => el.id || el.className);
+  });
 try {
   client = new Client({ name: "apps-test", version: "1" });
   await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp")));
@@ -301,11 +321,14 @@ try {
   await visitor.goto(shareURL);
   await expect(visitor.getByText("Signed in")).toBeVisible();
 
-  // Mobile hub.
+  // Mobile hub, where the toolbar and the home page scroll, on the GPU (seeThroughScrollers).
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/apps-tab-mobile.png" });
+  assert.deepEqual(await seeThroughScrollers(page), [], "see-through scrollers in an app's tab");
   await page.getByRole("tab", { name: "Apps" }).click();
   await page.screenshot({ path: "test-results/apps-home-mobile.png", fullPage: true });
+  assert.ok(await page.locator("#home").evaluate((el) => el.scrollHeight > el.clientHeight), "the apps home scrolls");
+  assert.deepEqual(await seeThroughScrollers(page), [], "see-through scrollers on the apps home");
   await page.setViewportSize({ width: 1440, height: 920 });
 
   // A plain form posting to the backend carries the session too (the runtime tags its action);

@@ -128,6 +128,8 @@ code {
   overflow-x: auto;
   scrollbar-width: none;
   padding-top: 10px;
+  /* Opaque, so it scrolls on the GPU (see .home). */
+  background: var(--surface-soft);
 }
 .tabs::-webkit-scrollbar {
   display: none;
@@ -252,8 +254,13 @@ code {
 }
 
 /* ---- home ------------------------------------------------------------------- */
+/* Every scroller here paints its own opaque background, the colour already behind it. Where
+   text is drawn for LCD screens (Chrome on Windows and Linux at 1x), a scroller the browser
+   can see through is not moved on the GPU but re-rastered on every frame it scrolls, which
+   keeps a 120 Hz screen from scrolling at its rate. */
 .home {
   overflow-y: auto;
+  background: var(--canvas);
 }
 .home-inner {
   width: 100%;
@@ -667,6 +674,7 @@ code {
   max-width: 760px;
   max-height: 50vh;
   overflow: auto;
+  background: var(--canvas);
 }
 .drawer {
   width: 420px;
@@ -697,6 +705,7 @@ code {
   padding: 4px 20px 28px;
   flex: 1;
   min-height: 0;
+  background: var(--surface-soft);
 }
 .drawer-body h4 {
   font: 500 12px var(--font-body);
@@ -1154,6 +1163,7 @@ dialog label > input:not([type="radio"]):not([type="checkbox"]) {
   .app-tools {
     width: 100%;
     overflow-x: auto;
+    background: var(--canvas);
   }
   .drawer {
     position: absolute;
