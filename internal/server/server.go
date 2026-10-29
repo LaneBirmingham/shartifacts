@@ -311,6 +311,10 @@ func (s *Server) build() http.Handler {
 			return
 		}
 		if page := workspacePage(r.URL.Path); page != "" {
+			if id, ok := appPageID(r.URL.Path); ok {
+				s.writeHubAppPage(w, id)
+				return
+			}
 			s.writePage(w, page)
 			return
 		}
@@ -397,6 +401,10 @@ func (s *Server) writePage(w http.ResponseWriter, page string) {
 		http.Error(w, "UI unavailable", 500)
 		return
 	}
+	writeHTML(w, b)
+}
+
+func writeHTML(w http.ResponseWriter, b []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 	w.Write(b)

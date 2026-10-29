@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/store"
@@ -160,6 +161,39 @@ func (s *Server) appManifest(w http.ResponseWriter, r *http.Request) {
 		Icons       []manifestIcon `json:"icons"`
 	}{base, a.Name, a.Name, a.Description, base + "?installed", base, "standalone", "#f9f8f6", "#f9f8f6", icons})
 	serveRevalidated(w, r, "application/manifest+json", b)
+}
+
+// appPageID returns the app id of a hub page /apps/{id}.
+func appPageID(p string) (string, bool) {
+	id, ok := strings.CutPrefix(p, "/apps/")
+	if !ok || len(id) != 24 {
+		return "", false
+	}
+	for _, c := range id {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return "", false
+		}
+	}
+	return id, true
+}
+
+// writeHubAppPage serves the hub with this app's manifest already linked. A browser decides
+// whether a page installs, and as what, from the manifest it finds as the page loads; the
+// hub swapping the home manifest for the app's afterwards (offerInstall) can leave Chrome
+// judging the page by the workspace's, which may already be installed. An unknown id gets
+// the plain hub, which says so itself.
+func (s *Server) writeHubAppPage(w http.ResponseWriter, id string) {
+	b, err := fs.ReadFile(s.Web, "hub.html")
+	if err != nil {
+		http.Error(w, "UI unavailable", 500)
+		return
+	}
+	if _, err := s.Store.App(id); err == nil {
+		base := "/apps/" + id
+		b = bytes.Replace(b, []byte(`<link rel="manifest" href="/manifest.webmanifest" />`), []byte(`<link rel="manifest" href="`+base+`/manifest.webmanifest" crossorigin="use-credentials" />`), 1)
+		b = bytes.Replace(b, []byte(`<link rel="apple-touch-icon" href="/icon-192.png" />`), []byte(`<link rel="apple-touch-icon" href="`+base+`/icon.png" />`), 1)
+	}
+	writeHTML(w, b)
 }
 
 func (s *Server) serveLauncherIcon(w http.ResponseWriter, r *http.Request, mask bool) {
