@@ -131,6 +131,14 @@ type Local struct {
 	Idle time.Duration
 	// Remote marks the runner sidecar, for Info.
 	Remote bool
+	// CacheDir is where the Go toolchain keeps the build and module caches for the
+	// backends it builds ("" uses Dir/.cache). One cache for every build is what makes a
+	// backend compile quick: the standard library is compiled once and then reused, where
+	// a cache per build would spend about eight seconds on it each time. Normally it sits
+	// in the apps directory with the builds it produced; callers that keep their builds
+	// apart, such as tests that use a fresh directory each time, point every build at one
+	// shared cache instead.
+	CacheDir string
 	// DataQuota bounds an app's DATA_DIR in bytes (0: no limit). A backend whose data
 	// outgrows it is stopped and not started again until the data shrinks or the quota grows.
 	DataQuota int64

@@ -50,6 +50,19 @@ tower ssh 'cd /mnt/user/projects/shartifacts && docker tag shartifacts:rollback 
 
 Jobs run in `deploy/ci/Dockerfile` (`shartifacts-ci:local`, built on the server) on a runner registered to this repository alone, with the docker socket and the compose directory mounted. The browser and apps suites are not in CI — they need Chrome, and they stay a local gate before a push.
 
+A job's container is thrown away when it ends, so the two things that would make every run start from scratch are kept outside it:
+
+- The **Go build cache** is a directory on the server's cache pool, `/mnt/cache/appdata/shartifacts-ci/ci`, bind-mounted at `/ci` into every job by the runner (its `container.options`, in the runner's `config.yaml` beside the compose stack), and the workflow points `GOCACHE` there. A job then compiles only what the previous commit changed: `go vet`, `go build` and the compile half of `go test` come down to about a second each.
+- The **module cache** is baked into the CI image, so `go` downloads nothing. Rebuild the image after adding a dependency as well as after a toolchain change:
+
+```sh
+tower ssh 'cd /mnt/user/projects/shartifacts && docker build -f deploy/ci/Dockerfile -t shartifacts-ci:local .'
+```
+
+The rest of the runner's settings — one job at a time, workspaces on the cache pool, a half-hour job timeout — are in `/mnt/user/appdata/gitea-runner-ci/data/config.yaml`, which the stack reads with `CONFIG_FILE`. Job workspaces live under `/mnt/cache/appdata/shartifacts-ci/work`.
+
+Tests that deploy apps build a Go backend, and each one opens a store in a fresh temporary directory, so the build cache would be cold for every backend. `internal/server/backend_cache_test.go` gives them one shared cache for the whole test binary instead, which is most of the difference between the suite taking a few minutes and half a minute.
+
 ## Releasing
 
 Versions are calendar versions: `YYYY.MM.DD`, which is also the git tag (`2026.10.28`), and `.2`, `.3` after it when more than one release ships in a day. `v0.1.0` and `v0.2.0` are history and stay as they are.
@@ -107,7 +120,7 @@ docker build -t shartifacts:verify .
 npm run test:docker
 ```
 
-`make check` runs the Go checks, and `make help` lists the other targets. CI (`.github/workflows/ci.yml`) runs `go vet`, the race-enabled tests and a Docker build on every push and pull request.
+`make check` runs the Go checks, and `make help` lists the other targets. CI (`.gitea/workflows/ci.yml`, described under "Continuous integration and deploying") runs `go vet`, the race-enabled tests and a Docker build on every push and pull request.
 
 On macOS, browser tests use installed Google Chrome by default; elsewhere they use Playwright Chromium. Set `CHROME_PATH` to override the executable. The script builds an isolated binary, uses a temporary data directory, starts and stops its own server, and writes screenshots under `test-results/`. It verifies MCP upload URL discovery, direct curl uploads and MCP artifact readback, shared design tokens and rendered styles, chunked MCP media uploads, browser image uploads, real video/audio decoding and playback, video seeking and captions, media in React and unsaved drafts, byte ranges, media persistence, mobile media-library layout, all artifact types, interactive React/HTML, live drafts and recovery, revision restore, exact downloads, agent updates and conflicts, sandbox boundaries, import/search/duplicate/delete, mobile overflow, bundled React libraries with shadcn/ui and Tailwind, CDN script tags served locally, `window.storage` across reloads, the full-page view and restarts, `window.fs.readFile`, runtime error reports reaching `get_artifact`, comments over MCP, pinning and the gallery, forms, dialogs, downloads and new-tab links, and persistence after restart. Clicks into a just-loaded preview wait until Chrome routes input into the out-of-process frame (see `frameInteractive`).
 

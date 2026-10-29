@@ -21,6 +21,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false
 
+# Each job is a fresh container, so the Go build cache is kept outside it: the runner mounts
+# a directory on the server's cache pool at /ci (see "Continuous integration" in
+# docs/development.md). Without it every job recompiles the standard library and everything
+# above it — about four minutes of work in total — and with it a job pays only for what the
+# previous commit changed. The module cache needs no mount: the CI image has it baked in.
+env:
+  GOCACHE: /ci/go-build
+
 jobs:
   verify:
     runs-on: shartifacts-ci
