@@ -9,6 +9,8 @@ import (
 	"maps"
 	"mime"
 	"net/http"
+	"net/url"
+	"os"
 	"path"
 	"slices"
 	"sort"
@@ -179,6 +181,12 @@ func (s *Server) previewFile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// The preview's Download link. It lives under /preview/ because the page is an
+	// opaque-origin sandbox, which may read here but not under /api/.
+	if a.Revisions[v-1].Kind == store.FileKind && r.PathValue("path") == "download" {
+		s.serveFileArtifact(w, r, a.Revisions[v-1])
+		return
+	}
 	s.serveArtifactPath(w, r, a.Revisions[v-1], fmt.Sprintf("/preview/%s/%d/", a.ID, v), "")
 }
 func (s *Server) serveArtifactPath(w http.ResponseWriter, r *http.Request, rev store.Revision, base, objects string) {
@@ -250,6 +258,13 @@ func (s *Server) renderPreview(w http.ResponseWriter, r *http.Request, rev store
 		}
 		fmt.Fprintf(w, `<script>%s
  if(!ArtifactModule.default)throw new Error('React artifacts must default-export a component');window.createRoot(document.getElementById('root')).render(React.createElement(ArtifactModule.default));</script>`, strings.ReplaceAll(code, "</script", "<\\/script"))
+	case store.FileKind:
+		// A share link's page reaches the file under its token; the workspace's by version.
+		href := objects + "/download"
+		if objects == "" {
+			href = fmt.Sprintf("/preview/%s/%d/download", url.PathEscape(r.PathValue("id")), rev.Version)
+		}
+		fmt.Fprint(w, s.fileCard(rev, href))
 	case "markdown", "mermaid", "slides":
 		fmt.Fprintf(w, `<script src="%s/vendor/documents.js" crossorigin="anonymous"></script><script src="%s/vendor/lib/highlight.js" crossorigin="anonymous"></script>`, html.EscapeString(origin), html.EscapeString(origin))
 		if rev.Kind != "mermaid" && hasMath.MatchString(rev.Content) {
@@ -274,6 +289,64 @@ func (s *Server) renderPreview(w http.ResponseWriter, r *http.Request, rev store
 	}
 	readyURL, _ := json.Marshal(r.URL.RequestURI())
 	fmt.Fprintf(w, `<script>addEventListener('load',()=>parent.postMessage({type:'shartifacts-preview-ready',url:%s},'*'));</script></body></html>`, readyURL)
+}
+
+// fileCardStyle follows the workspace's theme, which the page is told (fileCardTheme) and
+// otherwise the system's, when a preview is opened on its own.
+const fileCardStyle = `<style>:root{--file-canvas:#f9f8f6;--file-ink:#1a1716;--file-muted:#6e6863;--file-hairline:#e6e0d9;--file-badge:#fff}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--file-canvas:#1c1a19;--file-ink:#f5f1ee;--file-muted:#a69e98;--file-hairline:#3c3734;--file-badge:#2b2826}}:root[data-theme=dark]{color-scheme:dark;--file-canvas:#1c1a19;--file-ink:#f5f1ee;--file-muted:#a69e98;--file-hairline:#3c3734;--file-badge:#2b2826}body{background:var(--file-canvas);color:var(--file-ink)}#file{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:100vh;box-sizing:border-box;padding:32px;text-align:center;overflow-wrap:anywhere}#file h1{font-size:36px;margin:12px 0 0;color:var(--file-ink)}#file p{margin:0;color:var(--file-muted)}.badge{font:500 13px "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;color:var(--file-muted);border:1px solid var(--file-hairline);border-radius:12px;padding:20px 18px;background:var(--file-badge)}.get{margin-top:20px;padding:12px 28px;border-radius:8px;background:#b5523b;color:#fff;font-weight:500;text-decoration:none}.get:hover{background:#9c4530}</style>`
+
+// fileCardTheme asks the page around this one for its theme and keeps following it (theme.js
+// answers). A sandboxed preview has an opaque origin, so it cannot read the saved choice. Only
+// its parent is listened to, and only the two themes are taken.
+const fileCardTheme = `<script>addEventListener('message',e=>{const d=e.data;if(e.source===parent&&d&&d.type==='shartifacts-theme'&&(d.theme==='light'||d.theme==='dark'))document.documentElement.dataset.theme=d.theme});if(parent!==window)parent.postMessage({type:'shartifacts-theme-request'},'*')</script>`
+
+// fileCard is a file artifact's page: what the file is and a way to get it. The download
+// attribute keeps the runtime from opening the link in a new tab, as it does other links, so
+// the response's attachment header saves the file with no blank tab left behind. The media
+// URL stays out of the page: visitors have the download link, and need no other name for it.
+func (s *Server) fileCard(rev store.Revision, href string) string {
+	style := fileCardStyle
+	f, e := store.ParseFileRef(rev.Content)
+	if e != nil {
+		return style + `<main id="file"><p>This file could not be read.</p></main>` + fileCardTheme
+	}
+	badge := strings.ToUpper(strings.TrimPrefix(path.Ext(f.Name), "."))
+	if badge == "" || len(badge) > 5 {
+		badge = "FILE"
+	}
+	heading := `<h1>` + html.EscapeString(rev.Title) + `</h1>`
+	detail := byteSize(f.Size)
+	if f.Name != rev.Title {
+		detail = html.EscapeString(f.Name) + " · " + detail
+	}
+	action := `<a class="get" href="` + html.EscapeString(href) + `" download>Download</a>`
+	// A draft being edited is not a saved version yet, so it has nothing to download from.
+	if rev.Version == 0 {
+		action = ""
+	}
+	if file, _, e := s.Store.MediaPath(f.MediaID()); e != nil || !fileExists(file) {
+		action = `<p>This file has been deleted and can no longer be downloaded.</p>`
+	}
+	return style + `<main id="file"><div class="badge">` + html.EscapeString(badge) + `</div>` + heading + `<p>` + detail + `</p>` + action + `</main>` + fileCardTheme
+}
+
+func fileExists(p string) bool {
+	_, e := os.Stat(p)
+	return e == nil
+}
+
+// byteSize says a file's size the way people read one: 1.5 MB.
+func byteSize(n int64) string {
+	const unit = 1000
+	if n < unit {
+		return fmt.Sprintf("%d bytes", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGT"[exp])
 }
 
 // designFonts declares the design system's open fonts, served from /vendor/fonts and

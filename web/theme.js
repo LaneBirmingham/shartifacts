@@ -34,9 +34,22 @@
   };
   let choice = saved();
   let palette = savedPalette();
+  // Sandboxed pages that asked to follow the theme: they cannot read the saved choice from
+  // their opaque origin. Only those that ask are told, so other frames get no extra messages.
+  const followers = new Set();
+  const tell = (frame, theme) => frame.postMessage({ type: "shartifacts-theme", theme }, "*");
+  addEventListener("message", (e) => {
+    if (e.data?.type !== "shartifacts-theme-request" || !e.source) return;
+    followers.add(e.source);
+    tell(e.source, root.dataset.theme);
+  });
   function apply() {
     const theme = choice || (system.matches ? "dark" : "light");
     root.dataset.theme = theme;
+    for (const frame of followers) {
+      if (frame.closed) followers.delete(frame);
+      else tell(frame, theme);
+    }
     root.dataset.palette = palette;
     for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = palettes[palette][theme];
     for (const picker of document.querySelectorAll("[data-palette-picker]")) {

@@ -540,7 +540,7 @@ func (ix *Index) sortHits(hits []Hit, meta map[string]Meta, by string, ranked bo
 var kindAlias = map[string]string{
 	"page": "html", "web": "html", "app": "react", "jsx": "react", "md": "markdown", "doc": "markdown",
 	"document": "markdown", "deck": "slides", "slide": "slides", "presentation": "slides",
-	"diagram": "mermaid", "image": "svg", "snippet": "code",
+	"diagram": "mermaid", "image": "svg", "snippet": "code", "zip": "file", "attachment": "file",
 }
 
 var hasAlias = map[string]string{

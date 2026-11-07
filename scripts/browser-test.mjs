@@ -1227,6 +1227,60 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await expect
     .poll(() => frame.locator("#movie").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
+  // A file artifact: picked in the dialog, uploaded, and downloaded under its own name, from
+  // inside the sandboxed preview as well as from the Share menu.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(base + "/artifacts");
+  await page.locator("#toggle-sidebar-menu").click();
+  await page.locator("#share-file").click();
+  await expect(page.locator('#create-form textarea[name="content"]')).toBeHidden();
+  const zipBytes = Buffer.from("PK\x03\x04 pretend archive");
+  await page.setInputFiles("#create-file", { name: "bundle.zip", mimeType: "application/zip", buffer: zipBytes });
+  await expect(page.locator('#create-form input[name="title"]')).toHaveValue("bundle.zip");
+  await page.locator('#create-form [type="submit"]').click();
+  const fileFrame = page.frameLocator("#preview");
+  await expect(fileFrame.locator("#file h1")).toHaveText("bundle.zip");
+  await expect(page.locator('[data-view="source"]')).toBeHidden();
+  const downloadFrom = async (link) => {
+    // Retried: a click on a freshly loaded preview can land on the parent (frameInteractive).
+    let d;
+    await expect(async () => {
+      [d] = await Promise.all([page.waitForEvent("download", { timeout: 3000 }), link.click({ timeout: 3000 })]);
+    }).toPass({ timeout: 20000 });
+    return [d.suggestedFilename(), (await readFile(await d.path())).toString("latin1")];
+  };
+  assert.deepEqual(await downloadFrom(fileFrame.locator("a.get")), ["bundle.zip", zipBytes.toString("latin1")]);
+  assert.equal(page.context().pages().length, 1, "the download left a blank tab");
+  await page.locator("#share-toggle").click();
+  assert.deepEqual(await downloadFrom(page.locator("#download")), ["bundle.zip", zipBytes.toString("latin1")]);
+  // Its page follows the theme, as it changes and when it loads in one.
+  const fileTheme = () => fileFrame.locator("body").evaluate((b) => [document.documentElement.dataset.theme, getComputedStyle(b).backgroundColor]);
+  const toggleTheme = () => page.locator("#sidebar [data-theme-toggle], [data-theme-toggle]").first().click();
+  const startTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+  await expect.poll(async () => (await fileTheme())[0]).toBe(startTheme);
+  await toggleTheme();
+  const flipped = startTheme === "dark" ? "light" : "dark";
+  await expect.poll(async () => (await fileTheme())[0]).toBe(flipped);
+  await page.reload();
+  await expect.poll(async () => (await fileTheme())[0]).toBe(flipped);
+  const flippedBg = (await fileTheme())[1];
+  await toggleTheme();
+  await expect.poll(async () => (await fileTheme())[0]).toBe(startTheme);
+  assert.notEqual((await fileTheme())[1], flippedBg, "the page did not change colour with the theme");
+  // Its title can be edited, with the file kept; a new file makes a new version.
+  await page.locator("#toggle-details").click();
+  await page.locator("#edit-details").click();
+  await expect(page.locator("#edit-kind-label")).toBeHidden();
+  await page.locator("#edit-title").fill("The bundle");
+  await page.locator("#save").click();
+  await expect(fileFrame.locator("#file h1")).toHaveText("The bundle");
+  await expect(fileFrame.locator("#file p").first()).toContainText("bundle.zip");
+  await page.locator("#toggle-details").click();
+  await page.setInputFiles("#replace-file", { name: "bundle-2.zip", mimeType: "application/zip", buffer: Buffer.from("second") });
+  await expect(fileFrame.locator("#file p").first()).toContainText("bundle-2.zip");
+  // An ordinary artifact opened next has its source back.
+  await page.goto(base + "/a/" + longTitle.id);
+  await expect(page.locator('[data-view="source"]')).toBeVisible();
   // Sign-in: set a password in the workspace, connect an agent with a token, sign in from
   // another browser, revoke the token and sign out.
   await page.goto(base + "/artifacts");

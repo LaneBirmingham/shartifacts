@@ -1354,6 +1354,17 @@ dialog textarea {
   margin: 0;
   cursor: pointer;
 }
+#create-progress {
+  width: 100%;
+  margin-top: 12px;
+}
+/* A file artifact has no source to read, edit or compare: its page is all there is. */
+body.file-artifact #view-controls .tabs,
+body.file-artifact #copy-source,
+body.file-artifact #edit,
+body.file-artifact #edit-kind-label {
+  display: none;
+}
 .file-label input {
   display: none;
 }
@@ -1951,14 +1962,16 @@ button.link {
 .panel-body .related nav { flex-direction: column; gap: 4px; margin-top: 0; }
 .panel-body .related-item { max-width: none; width: 100%; }
 .panel-actions { display: grid; gap: 2px; margin: 0 -10px; }
-.panel-actions button {
+.panel-actions button,
+.panel-actions .button {
   justify-content: flex-start;
   padding: 8px 10px;
   border: 0;
   background: transparent;
   font-size: 13px;
 }
-.panel-actions button:hover { background: var(--surface-soft); }
+.panel-actions button:hover,
+.panel-actions .button:hover { background: var(--surface-soft); }
 /* Archive and Delete come last and apart, so they are not hit on the way to something else. */
 .panel-danger { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); }
 .timeline {

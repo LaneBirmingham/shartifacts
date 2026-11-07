@@ -1,4 +1,4 @@
-# Media and data files
+# Media, data and files to download
 
 Open **Media library** from the **⋯** menu at the foot of the sidebar to upload files and copy HTML embed code. Data files (CSV, JSON, plain text, Markdown, XLSX, PDF) get a `window.fs.readFile(...)` snippet instead; uploads keep their file name for it. Agents add `?name=sales.csv` to the upload URL to do the same. HTML and React previews support native media elements, including controls, playback, seeking, posters, and WebVTT captions. Uploaded files are immutable and stored under `data/media/`; duplicate bytes with the same MIME type reuse the same URL. Files survive restarts, artifact revisions, duplication, and deletion. Back up the entire data directory. Nothing deletes media automatically, so old versions keep working.
 
@@ -38,5 +38,30 @@ Use the returned URL literally in source:
 ```
 
 Maximum **256 MiB per file**, streamed to disk over HTTP, with byte-range requests for seeking. Supported MIME types: `video/mp4`, `video/webm`, `video/ogg`, `video/quicktime`; `audio/mpeg`, `audio/mp4`, `audio/ogg`, `audio/wav`, `audio/webm`, `audio/flac`; `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/avif`; `text/vtt`; and data files `text/csv`, `application/json`, `text/plain`, `text/markdown`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/pdf`. Every media response carries `Content-Security-Policy: default-src 'none'; sandbox`, so an uploaded file never runs as a page. Supply the correct MIME type; uploads are stored without transcoding. Actual playback depends on browser codec support; prefer MP4 with H.264/AAC or WebM. Autoplay generally requires `muted playsinline`. For caption tracks, put `crossorigin="anonymous"` on the video/audio element. Uploaded raster images also work as Markdown images. External URLs must first be downloaded by the agent's own tools and uploaded here; the server does not fetch remote URLs or open agent filesystem paths.
+
+## Files to download
+
+A `file` artifact turns an upload into a page with a Download button and a link you can share: a zip, an installer, a disk image, anything. In the workspace, **⋯ → Share a file** picks and uploads it. **Share → Public read-only link…** then makes a link for people outside the network (see [Public sharing](sharing.md)).
+
+An agent uploads the file and names it in `create_artifact`; `share: true` also returns the public link, reusing one that already follows new versions:
+
+```sh
+curl -f -H 'Content-Type: application/zip' --data-binary @bundle.zip \
+  'http://192.168.1.20:8080/api/media?name=bundle.zip'
+```
+
+```json
+{ "title": "Release bundle", "kind": "file", "content": "/media/RETURNED_ID.zip", "share": true }
+```
+
+The page follows the light or dark theme of the workspace or share page around it, and the system's when opened on its own.
+
+The answer's `share_url` is the page, and `download_url` is the file itself, so it works with `curl -OJ` or `wget --content-disposition` and resumes with `curl -C -`. `update_artifact` with another URL adds a version: a link that follows new versions then serves the new file, and one pinned to a version keeps the old one.
+
+Send a file as `application/zip`, `application/gzip`, `application/x-tar`, `application/x-7z-compressed`, `application/vnd.rar`, `application/x-bzip2`, `application/x-xz` or `application/zstd`, and anything else as `application/octet-stream`. Types that would run in a browser, such as `text/html` and `image/svg+xml`, stay refused; the same file sent as `application/octet-stream` is stored and offered as bytes to save. Every download carries `Content-Disposition: attachment` and the media sandbox policy, and is never rendered on this origin.
+
+The limit is the Media library's 256 MiB, and a proxy in front of shartifacts has its own (`client_max_body_size` in nginx; Cloudflare's free plan stops at 100 MB). Size and type come from the stored file, not from the caller. The bytes live in the Media library, so deleting the artifact leaves them there until **Find unused files** clears them, and deleting them from the library leaves the artifact's page saying the file is gone.
+
+## Sharing and access
 
 The MCP initialization instructions give connected agents the upload URL and a ready-to-run `curl` command; the `shartifacts://guide` resource and the tool schemas describe the rest of this workflow, its limits, and examples. Media endpoints allow read-only access from sandbox previews; API writes remain protected by the existing origin and LAN checks. Media is shared with everyone who can access this service.

@@ -24,7 +24,15 @@ const MediaChunkSize = 1 << 20
 // Data files (CSV, JSON, text, spreadsheets, PDF) are what artifacts read with
 // window.fs.readFile; they are never rendered as pages.
 var mediaTypes = map[string]string{"video/mp4": ".mp4", "video/webm": ".webm", "video/ogg": ".ogv", "video/quicktime": ".mov", "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/wav": ".wav", "audio/webm": ".weba", "audio/flac": ".flac", "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/avif": ".avif", "text/vtt": ".vtt",
-	"text/csv": ".csv", "application/json": ".json", "text/plain": ".txt", "text/markdown": ".md", "application/pdf": ".pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx"}
+	"text/csv": ".csv", "application/json": ".json", "text/plain": ".txt", "text/markdown": ".md", "application/pdf": ".pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+	// Files to hand over rather than show (file artifacts). application/octet-stream is how
+	// anything else arrives, an HTML page or an installer included: browsers will not run or
+	// render it, whatever its bytes, so types that would run (text/html, image/svg+xml) can
+	// stay refused without limiting what can be shared.
+	"application/zip": ".zip", "application/gzip": ".gz", "application/x-tar": ".tar", "application/x-7z-compressed": ".7z", "application/vnd.rar": ".rar", "application/x-bzip2": ".bz2", "application/x-xz": ".xz", "application/zstd": ".zst", "application/octet-stream": ".bin"}
+
+// mediaAliases are the other names browsers and tools give those types.
+var mediaAliases = map[string]string{"application/x-zip-compressed": "application/zip", "application/x-gzip": "application/gzip", "application/x-rar-compressed": "application/vnd.rar", "application/x-bzip": "application/x-bzip2"}
 
 type Media struct {
 	ID       string `json:"id"`
@@ -53,12 +61,9 @@ func (s *Store) mediaNames() (map[string]string, error) {
 
 // NameMedia records the file name an upload arrived with.
 func (s *Store) NameMedia(m Media, name string) (Media, error) {
-	name = filepath.Base(strings.TrimSpace(strings.ReplaceAll(name, "\\", "/")))
-	if name == "." || name == "/" || name == "" {
-		return m, nil
-	}
-	if len(name) > 255 || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r == 127 }) {
-		return m, errors.New("file name must be 1–255 bytes without control characters")
+	name, err := cleanFileName(name)
+	if err != nil || name == "" {
+		return m, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,6 +83,19 @@ func (s *Store) NameMedia(m Media, name string) (Media, error) {
 	return m, nil
 }
 
+// cleanFileName reduces a file name someone sent to its last path segment, or "" when it
+// names nothing.
+func cleanFileName(name string) (string, error) {
+	name = filepath.Base(strings.TrimSpace(strings.ReplaceAll(name, "\\", "/")))
+	if name == "." || name == "/" || name == "" {
+		return "", nil
+	}
+	if len(name) > 255 || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r == 127 }) {
+		return "", errors.New("file name must be 1–255 bytes without control characters")
+	}
+	return name, nil
+}
+
 type MediaUpload struct {
 	ID        string `json:"upload_id"`
 	Offset    int64  `json:"offset"`
@@ -88,9 +106,12 @@ type MediaUpload struct {
 
 func mediaType(raw string) (string, string, error) {
 	t, _, err := mime.ParseMediaType(raw)
+	if alias, ok := mediaAliases[t]; ok {
+		t = alias
+	}
 	ext := mediaTypes[t]
 	if err != nil || ext == "" {
-		return "", "", errors.New("unsupported media type; use MP4/WebM video, common audio/raster images, text/vtt captions, or CSV/JSON/text/Markdown/XLSX/PDF data")
+		return "", "", errors.New("unsupported media type; use MP4/WebM video, common audio/raster images, text/vtt captions, CSV/JSON/text/Markdown/XLSX/PDF data, or application/zip or application/octet-stream for any other file")
 	}
 	return t, ext, nil
 }

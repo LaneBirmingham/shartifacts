@@ -119,8 +119,8 @@ func scopeRefs(token, text string) string {
 
 // sharedRevision is a revision as a share link serves it.
 func sharedRevision(token string, rev store.Revision) store.Revision {
-	if rev.Kind == "code" {
-		return rev // shown as text; nothing loads
+	if rev.Kind == "code" || rev.Kind == store.FileKind {
+		return rev // shown as text, or as a download link; nothing loads
 	}
 	rev.Content = scopeRefs(token, rev.Content)
 	if len(rev.Files) > 0 {
@@ -179,6 +179,36 @@ func (s *Server) shareURL(token string) string {
 		return ""
 	}
 	return strings.TrimRight(s.ShareOrigin, "/") + "/s/" + token
+}
+
+// shareForAgent adds a public link to what an agent's save returns: the artifact's existing
+// link that follows new versions, else a new one, so asking twice does not pile them up. A
+// file's direct download link comes too, for curl and for pasting into a message. Failing to
+// share is reported beside the saved artifact rather than as an error, since the save stands.
+func (s *Server) shareForAgent(out map[string]any, a store.Artifact) {
+	if s.ShareOrigin == "" {
+		out["share_error"] = "sharing outside the network is off: SHARTIFACTS_SHARE_ORIGIN is not set"
+		return
+	}
+	token := ""
+	for _, sh := range s.Store.Shares(a.ID) {
+		if sh.Version == 0 {
+			token = sh.Token
+			break
+		}
+	}
+	if token == "" {
+		sh, e := s.Store.CreateShare(a.ID, 0)
+		if e != nil {
+			out["share_error"] = e.Error()
+			return
+		}
+		token = sh.Token
+	}
+	out["share_url"] = s.shareURL(token)
+	if a.Revisions[len(a.Revisions)-1].Kind == store.FileKind {
+		out["download_url"] = s.shareURL(token) + "/download"
+	}
 }
 
 // maxShareBody bounds a share link's read-only data calls, which only name what to read.
@@ -280,6 +310,16 @@ func (s *Server) shareRoutes(mux *http.ServeMux) {
 		}
 		token := r.PathValue("token")
 		s.serveArtifactPath(w, r, sharedRevision(token, rev), "/s/"+token+"/preview/", "/s/"+token)
+	})
+	// A shared file, under its own name. Only a file artifact has one: any other artifact's
+	// source is the link's page to show, not something this route hands over.
+	mux.HandleFunc("GET /s/{token}/download", func(w http.ResponseWriter, r *http.Request) {
+		_, _, rev, ok := s.shared(r)
+		if !ok || rev.Kind != store.FileKind {
+			http.NotFound(w, r)
+			return
+		}
+		s.serveFileArtifact(w, r, rev)
 	})
 	// Media the shared revision references, and the shared artifact's own assets.
 	mux.HandleFunc("GET /s/{token}/media/{id}", func(w http.ResponseWriter, r *http.Request) {
