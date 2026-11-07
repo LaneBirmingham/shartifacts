@@ -36,7 +36,7 @@ const (
 
 var filePath = regexp.MustCompile(`^` + fileSegment + `(/` + fileSegment + `)*$`)
 
-var Kinds = []string{"html", "react", "markdown", "slides", "svg", "mermaid", "code"}
+var Kinds = []string{"html", "react", "markdown", "slides", "svg", "mermaid", "code", FileKind}
 
 type Revision struct {
 	Version int    `json:"version"`
@@ -301,10 +301,18 @@ func validate(in Input) error {
 		}
 	}
 	if !ok {
-		return errors.New("kind must be html, react, markdown, slides, svg, mermaid, or code")
+		return errors.New("kind must be html, react, markdown, slides, svg, mermaid, code, or file")
 	}
 	if len(in.Content) > MaxContent {
 		return errors.New("content exceeds 2 MiB")
+	}
+	if in.Kind == FileKind {
+		if _, err := ParseFileRef(in.Content); err != nil {
+			return err
+		}
+		if len(in.Files) > 0 {
+			return errors.New("a file artifact has no supporting files")
+		}
 	}
 	if len(in.Note) > 1000 {
 		return errors.New("note exceeds 1000 bytes")
@@ -443,6 +451,13 @@ func (s *Store) save(id string, in Input) (Artifact, error) {
 			}
 		}
 		files = mergeFiles(nil, in.Files)
+		if in.Kind == FileKind {
+			content, err := s.fileContent(in.Content, in.Title)
+			if err != nil {
+				return Artifact{}, err
+			}
+			in.Content = content
+		}
 		if err := validate(in); err != nil {
 			return Artifact{}, err
 		}
@@ -489,6 +504,24 @@ func (s *Store) save(id string, in Input) (Artifact, error) {
 				return Artifact{}, err
 			}
 			in.Content = content
+		}
+		// A file's content means nothing as source and source means nothing as a file, so
+		// neither turns into the other.
+		if (latest.Kind == FileKind) != (in.Kind == FileKind) {
+			return Artifact{}, errors.New("a file artifact cannot change kind, or another artifact become one; create a new artifact")
+		}
+		if in.Kind == FileKind {
+			// Saving a new title keeps the file as it is, even one since deleted from the
+			// Media library; only a different file has to exist.
+			if in.Content == "" || in.Content == latest.Content {
+				in.Content = latest.Content
+			} else {
+				content, err := s.fileContent(in.Content, in.Title)
+				if err != nil {
+					return Artifact{}, err
+				}
+				in.Content = content
+			}
 		}
 		if err := validate(in); err != nil {
 			return Artifact{}, err

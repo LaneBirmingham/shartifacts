@@ -205,6 +205,7 @@ const icon = {
   svg: "◇",
   mermaid: "⑂",
   code: "#_",
+  file: "↓",
 };
 // Pinned artifacts lead; otherwise the server's most-recently-updated order.
 const byPin = (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
@@ -970,6 +971,10 @@ function render({ keepFrame = false } = {}) {
     o.selected = v.version === state.version;
     $("#versions").append(o);
   }
+  const isFile = r.kind === "file";
+  document.body.classList.toggle("file-artifact", isFile);
+  $("#replace-file-label").hidden = !isFile || state.version !== latest;
+  if (isFile && state.view !== "preview") setView("preview");
   state.main = r.content;
   state.files = { ...(r.files || {}) };
   state.file = "";
@@ -1002,7 +1007,7 @@ function render({ keepFrame = false } = {}) {
   $("#edit").hidden = state.version !== latest;
   list();
 }
-const kindName = { html: "HTML", react: "React", markdown: "Markdown", slides: "Slides", svg: "SVG", mermaid: "Mermaid", code: "Code" };
+const kindName = { html: "HTML", react: "React", markdown: "Markdown", slides: "Slides", svg: "SVG", mermaid: "Mermaid", code: "Code", file: "File" };
 // The Versions tab: every saved version, newest first, with its note. Picking one shows it.
 function renderTimeline() {
   const a = state.artifact,
@@ -1524,13 +1529,27 @@ async function copy(text) {
     );
   }
 }
-function openCreate() {
+// A file artifact starts from an upload rather than from source, so the dialog trades its
+// source box for a file picker.
+function createKindChanged() {
+  const form = $("#create-form"),
+    isFile = form.elements.kind.value === "file";
+  form.elements.content.required = !isFile;
+  form.elements.content.closest("label").hidden = isFile;
+  $("#create-file-hint").hidden = $("#create-file-label").hidden = !isFile;
+  $("#import-label").hidden = isFile;
+}
+function openCreate(kind) {
   const form = $("#create-form");
   form.querySelector(".form-error").textContent = "";
+  if (typeof kind === "string") form.elements.kind.value = kind;
+  createKindChanged();
   $("#create-dialog").showModal();
 }
 $("#new").onclick = openCreate;
 $("#start").onclick = openCreate;
+$("#share-file").onclick = () => openCreate("file");
+$("#create-form").elements.kind.onchange = createKindChanged;
 document
   .querySelectorAll("[data-close]")
   .forEach((b) => (b.onclick = () => b.closest("dialog").close()));
@@ -1609,8 +1628,11 @@ document.querySelectorAll("button[data-view]").forEach(
 function startEditing(focus) {
   if (state.version !== state.artifact.revisions.length) return;
   compareWith = null;
+  // A file's title and description are all that can be edited; its page stays in view.
+  const isFile = state.artifact.revisions.at(-1).kind === "file";
+  if (isFile && focus === "#source") return;
   setEditing(true);
-  setView("split");
+  setView(isFile ? "preview" : "split");
   $(focus).focus();
 }
 $("#edit").onclick = () => startEditing("#source");
@@ -1880,16 +1902,82 @@ $("#create-form").onsubmit = async (e) => {
   b.disabled = true;
   try {
     const data = Object.fromEntries(new FormData(form));
+    if (data.kind === "file") {
+      const progress = $("#create-progress");
+      progress.value = 0;
+      progress.hidden = false;
+      data.content = await uploadForArtifact($("#create-file").files[0], (done) => (progress.value = done));
+    }
     await create(data);
     $("#create-dialog").close();
     form.reset();
+    $("#create-file-name").textContent = "Choose file";
+    createKindChanged();
     toast("Artifact created");
   } catch (err) {
     form.querySelector(".form-error").textContent = err.message;
   } finally {
     b.disabled = false;
+    $("#create-progress").hidden = true;
   }
 };
+$("#create-file").onchange = (e) => {
+  const file = e.target.files[0];
+  $("#create-file-name").textContent = file ? file.name : "Choose file";
+  const title = $("#create-form").elements.title;
+  if (file && !title.value) title.value = file.name;
+};
+$("#replace-file").onchange = async (e) => {
+  const input = e.target,
+    file = input.files[0];
+  if (!file) return;
+  const a = state.artifact,
+    label = $("#replace-file-label");
+  input.disabled = true;
+  try {
+    const content = await uploadForArtifact(file, (done) => (label.firstChild.textContent = `Uploading ${Math.round(done * 100)}%…`));
+    await api(`/api/artifacts/${a.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, base_version: a.revisions.length, note: `Replaced with ${file.name}` }),
+    });
+    await refresh();
+    await navigate(a.id);
+    toast("File replaced");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    input.disabled = false;
+    label.firstChild.textContent = "Replace file";
+    input.value = "";
+  }
+};
+// What the type of a file to share is sent as. Anything not named here, a web page included,
+// goes as plain bytes, which browsers download and never render.
+const archiveTypes = { zip: "application/zip", gz: "application/gzip", tgz: "application/gzip", tar: "application/x-tar", "7z": "application/x-7z-compressed", rar: "application/vnd.rar", bz2: "application/x-bzip2", xz: "application/x-xz", zst: "application/zstd" };
+// Uploads a file for a file artifact and returns the content to save. XMLHttpRequest because
+// fetch cannot report upload progress, and a large zip takes long enough to need it.
+function uploadForArtifact(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error("Choose a file first."));
+    if (!file.size || file.size > 256 * 1048576)
+      return reject(new Error("Choose a nonempty file of 256 MiB or smaller."));
+    const x = new XMLHttpRequest();
+    x.open("POST", `/api/media?name=${encodeURIComponent(file.name)}`);
+    x.setRequestHeader("Content-Type", archiveTypes[file.name.split(".").pop().toLowerCase()] || "application/octet-stream");
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    x.onerror = () => reject(new Error("The upload failed. A proxy in front of shartifacts may limit upload sizes."));
+    x.onload = () => {
+      let body = {};
+      try {
+        body = JSON.parse(x.responseText);
+      } catch {}
+      if (x.status === 201) resolve(JSON.stringify({ url: body.url, name: file.name }));
+      else if (x.status === 413) reject(new Error("That file is larger than a proxy in front of shartifacts allows."));
+      else reject(new Error(body.error || `Upload failed (${x.status})`));
+    };
+    x.send(file);
+  });
+}
 $("#import-file").onchange = async (e) => {
   const file = e.target.files[0];
   if (!file) return;

@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"maps"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -371,6 +372,26 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, id string) {
 	http.ServeFile(w, r, path)
 }
 
+// serveFileArtifact downloads a file artifact's file under its own name. ServeFile answers
+// range requests, so a dropped download of a large zip can resume.
+func (s *Server) serveFileArtifact(w http.ResponseWriter, r *http.Request, rev store.Revision) {
+	f, e := store.ParseFileRef(rev.Content)
+	if e != nil {
+		http.NotFound(w, r)
+		return
+	}
+	path, t, e := s.Store.MediaPath(f.MediaID())
+	if e != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", t)
+	// Attachment and the sandbox both: a download never runs on this origin, whatever it holds.
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": f.Name}))
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	http.ServeFile(w, r, path)
+}
+
 func (s *Server) etag(path string) string {
 	if v, ok := s.etags.Load(path); ok {
 		return v.(string)
@@ -690,6 +711,10 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	rev, e := s.revision(r)
 	if e != nil {
 		respond(w, 404, nil, e)
+		return
+	}
+	if rev.Kind == store.FileKind {
+		s.serveFileArtifact(w, r, rev)
 		return
 	}
 	ext := map[string]string{"html": "html", "react": "tsx", "markdown": "md", "slides": "md", "svg": "svg", "mermaid": "mmd", "code": "txt"}[rev.Kind]

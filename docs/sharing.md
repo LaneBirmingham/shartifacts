@@ -96,6 +96,8 @@ The workspace's hostname must **not** answer from outside. If it does, fix the e
 
 **More → Share read-only link…** makes a link that follows new versions or stays on the version shown, and revokes links (the API needs `version` said outright: a number, or `0` to follow new versions). A link pinned to a version pins the page, not its data: shared `db` documents, shared storage and assets are the artifact's current ones, live, as the page would show them.
 
+A link to a [file artifact](media.md#files-to-download) opens a page with a Download button, and `/s/<token>/download` is the file itself. Agents make a link with `share: true` on `create_artifact` or `update_artifact`.
+
 Every link in the list, for artifacts and apps alike, has a **QR code** button. It shows the link as a large QR code over the page, so people in the room can scan it with a phone camera and open the link directly. The code is drawn in the browser; the link goes nowhere else. Click or press Esc to close it.
 
 What a visitor gets: the artifact and its files, the read-only runtime (shared `db` documents and shared `window.storage` to read, live as they change; no writes, no Claude, rooms, uploads or comments; private `data/users/<id>/` documents, anything a rule keeps above `view`, and personal `window.storage` stay hidden, as for a new person in Claude), and downloads.

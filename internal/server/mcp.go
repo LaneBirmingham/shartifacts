@@ -130,11 +130,13 @@ func (s *Server) mcpServer(baseURL, uploadPath, agent string) *mcp.Server {
 	uploadLines := "\nUpload URL: " + info.UploadURL + "\nShell example (replace ./clip.mp4 with the file on the agent machine): " + info.CurlExample + uploadNote
 	// The guide is everything an agent may need, and it costs context only when an agent
 	// reads it; the instructions every connection receives are the summary below.
-	guide := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, often on an element they pointed at in the preview (quote, element and anchor say which), some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
+	guide := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides (Markdown slides separated by --- lines; "Note:" starts speaker notes), svg, mermaid, code (name the title with a file extension for highlighting), file (an uploaded file to download: content is its /media/ URL). Markdown and slides render $TeX$ math and fenced mermaid. Larger artifacts can add text files (CSS, JS modules, components, JSON, more pages) with files; reference them by relative path, and React imports them relatively (./Chart). React must default-export a component and may import react, react-dom, recharts, lucide-react, d3, lodash, papaparse, mathjs, three, chart.js, xlsx, tone, plotly and shadcn/ui (@/components/ui/*); Tailwind classes work. HTML may load those libraries with their usual cdnjs/jsdelivr/unpkg script tags or cdn.tailwindcss.com (served locally); no other external URLs, iframes or fetches. Artifacts get Claude's capability runtime: await claude.use(name) for user, db (realtime documents; agents use artifact_db), assets, artifact (publish itself), comments, room (presence and messages), downloads, permissions, files (the Media library), mcp (this server's connectors and artifacts_data) and sample (Claude, when enabled); no manifest is needed, and capabilities.db.rules declare db access. The older window.storage API (artifact_storage), window.fs.readFile and window.claude.complete work too. Forms, alert/confirm, downloads and links (new tab) work. search_artifacts finds artifacts by their words (typos are fine) and filters; give new artifacts a description and a few tags so people can find them. Users leave comment threads, often on an element they pointed at in the preview (quote, element and anchor say which), some marked to_claude (open_comments in list_artifacts; search_artifacts has:open finds them); answer and resolve them with artifact_comments. watch_artifacts waits for new versions, comments and data.
 
 The library grows with every artifact, so agents keep it tidy. update_artifact with archived:true moves artifacts (ids for many at once) out of the library into the archive, reversibly: they keep their versions, data, comments and links, and archived:false restores them. list_artifacts and search_artifacts leave the archive out unless archived is include or only. When the person asks you to tidy up, archive what is stale, superseded or a throwaway test (search_artifacts sort:oldest or before:90d finds the stale), and say what you archived. delete_artifact with ids permanently deletes archived artifacts, to empty the archive when the person wants that. An artifact still in the library is deleted only when the person asks, with delete_artifact's confirmation.
 
 Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data files (CSV, JSON, text, Markdown, XLSX, PDF): upload files. Add ?name=FILE to the upload URL to keep a file's name; artifacts read data files with await window.fs.readFile(name, {encoding: 'utf8'}) (omit encoding for bytes). Do not manually transcribe base64 into source (2 MiB limit). Shell agents: run the curl command from list_media (raw bytes, max 256 MiB). Only clients that can supply bytes programmatically use begin_media_upload then upload_media_chunk (<=1048576 bytes per chunk, use returned offset, final:true on last). If the shell cannot reach the upload host, say so. list_media returns reusable URLs; embed them literally, e.g. <video controls playsinline src="/media/ID.mp4">, <audio controls src="/media/ID.mp3">, <img src="/media/ID.png">, <track kind="captions" src="/media/ID.vtt" srclang="en"> (set crossorigin="anonymous" on the parent). Autoplay needs muted playsinline. Verify media decodes/plays in the saved preview; report missing or corrupt media instead of claiming success.
+
+To hand someone a zip or any other file: upload it with ?name=FILE and Content-Type application/zip, or application/octet-stream for anything else (max 256 MiB), then create_artifact with kind file, a title, and the returned /media/ URL as content. It shows as a page with a Download button, and update_artifact with another URL adds a version. share:true on create_artifact or update_artifact returns share_url, a public read-only link, and download_url, the file itself; use it only when the person wants a link for people outside the network, and revoke links in the workspace.
 
 Apps are full-stack micro frontends shown as tabs on the home page: a React/TypeScript frontend and an optional Go (or prebuilt Rust) backend with its own data, deployed as numbered versions you can preview, promote and roll back, and shared through public links. Three tools: get_app (guide:true first: how to build one here), deploy_app (create, then ship versions) and manage_app (promote, update, restart, call, share, delete).
 
@@ -147,13 +149,14 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	// The summary is what an agent must know before its first call: what it can make, how
 	// not to lose an edit, what previews refuse, whose design to use, how to tidy up and
 	// where uploads go. Everything else is one resources/read away.
-	summary := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides, svg, mermaid, code.
+	summary := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides, svg, mermaid, code, file.
 Before updating, get_artifact for the latest base_version.
 Previews are sandboxed: no network, iframes, external URLs (bundled libraries aside) or localStorage; use window.storage.
 New visual artifacts use get_design_system. Explicit user design instructions always override it. Preserve an existing artifact's design when editing.
 Archive with update_artifact archived:true (ids for many); empty the archive with delete_artifact ids.
 Before publishing a port on a machine here (Docker, a dev server), list and claim it with ports.
 Upload files with the curl command from list_media. Do not manually transcribe base64.
+To share a zip or other file: upload it with ?name=, then create_artifact kind file with its /media/ URL as content; share:true returns a public link.
 Give people links on ` + links + `, e.g. ` + links + `/a/{id}; the upload URL is for your shell.
 Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps, ports).
 ` + uploadLines
@@ -285,8 +288,9 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Capabilities map[string]any    `json:"capabilities,omitempty" jsonschema:"Optional, as Claude's: {db: {rules: [{path, read, write}]}} sets who reads and writes which documents"`
 		Files        map[string]string `json:"files,omitempty"`
 		Note         string            `json:"note,omitempty"`
+		Share        bool              `json:"share,omitempty" jsonschema:"Also make a public read-only link (needs a share origin); only when the person wants one for people outside the network. Returns share_url, and download_url for a file"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "create_artifact", Description: "Create an artifact (title, kind, content, optional description, tags, files and note). Returns id, version, title, kind, and warnings for problems the preview will hit."}, func(ctx context.Context, req *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "create_artifact", Description: "Create an artifact (title, kind, content, optional description, tags, files and note). For kind file, content is the /media/ URL of an uploaded file. Returns id, version, title, kind, and warnings for problems the preview will hit."}, func(ctx context.Context, req *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, any, error) {
 		files := map[string]*string{}
 		for p, body := range in.Files {
 			files[p] = &body
@@ -295,7 +299,11 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		if e != nil {
 			return nil, nil, e
 		}
-		return nil, saved(a), nil
+		out := saved(a)
+		if in.Share {
+			s.shareForAgent(out, a)
+		}
+		return nil, out, nil
 	})
 	type UpdateInput struct {
 		ID           string             `json:"id,omitempty"`
@@ -312,6 +320,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Capabilities map[string]any     `json:"capabilities,omitempty"`
 		Note         string             `json:"note,omitempty"`
 		BaseVersion  int                `json:"base_version,omitempty" jsonschema:"Latest version from get_artifact; needed for every change but archived"`
+		Share        bool               `json:"share,omitempty" jsonschema:"Also make, or find, its public read-only link that follows new versions (needs a share origin); alone it adds no revision. Only when the person wants one for people outside the network. Returns share_url, and download_url for a file"`
 	}
 	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Omit a field to keep it. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
 		// Archiving is not a revision: alone, it neither needs nor checks base_version.
@@ -321,7 +330,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 			switch {
 			case in.ID != "":
 				return nil, nil, errors.New("send id or ids, not both")
-			case in.Archived == nil || revising:
+			case in.Archived == nil || revising || in.Share:
 				return nil, nil, errors.New("with ids, send only archived: true to archive them or false to restore them")
 			}
 			op := map[bool]string{true: "archive", false: "restore"}[*in.Archived]
@@ -331,6 +340,16 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 			}
 			return nil, out, nil
 		}
+		// Sharing is not a revision either.
+		if in.Share && in.Archived == nil && !revising {
+			a, e := s.Store.Get(in.ID)
+			if e != nil {
+				return nil, nil, e
+			}
+			out := saved(a)
+			s.shareForAgent(out, a)
+			return nil, out, nil
+		}
 		if in.Archived != nil && !revising {
 			a, e := s.Store.SetArchived(in.ID, *in.Archived)
 			if e != nil {
@@ -338,6 +357,9 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 			}
 			out := saved(a)
 			out["archived"] = *in.Archived
+			if in.Share {
+				s.shareForAgent(out, a)
+			}
 			return nil, out, nil
 		}
 		next := store.Input{Title: in.Title, Kind: in.Kind, Edits: in.Edits, Files: in.Files, Note: in.Note, Description: in.Description, Icon: in.Icon, Tags: in.Tags, Capabilities: rawJSON(in.Capabilities), BaseVersion: in.BaseVersion}
@@ -358,7 +380,11 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 				return nil, nil, e
 			}
 		}
-		return nil, saved(a), nil
+		out := saved(a)
+		if in.Share {
+			s.shareForAgent(out, a)
+		}
+		return nil, out, nil
 	})
 	type StorageInput struct {
 		ID string `json:"id"`

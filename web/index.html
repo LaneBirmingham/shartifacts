@@ -81,6 +81,7 @@
             <option>svg</option>
             <option>mermaid</option>
             <option>code</option>
+            <option>file</option>
           </select>
           <select id="when" aria-label="Filter by when it changed">
             <option value="">Any time</option>
@@ -124,6 +125,7 @@
         <!-- Agents make most artifacts, so making one by hand is here rather than at the top. -->
         <div id="sidebar-menu" class="sidebar-menu" hidden>
           <button id="new">✎ New artifact <kbd>N</kbd></button>
+          <button id="share-file">↑ Share a file</button>
           <button id="media">＋ Media library</button>
           <button id="connect" data-connect>⌁ Connect an agent</button>
           <button id="signin" data-signin>⚿ Sign-in</button>
@@ -256,7 +258,7 @@
         </div>
         <div id="editor-meta" class="editor-meta" hidden>
           <label>Title<input id="edit-title" maxlength="200" /></label
-          ><label
+          ><label id="edit-kind-label"
             >Type<select id="edit-kind">
               <option>html</option>
               <option>react</option>
@@ -265,6 +267,8 @@
               <option>svg</option>
               <option>mermaid</option>
               <option>code</option>
+              <!-- Shown only on a file artifact, which keeps its type. -->
+              <option disabled hidden>file</option>
             </select></label
           ><label class="icon-field"
             >Icon<input
@@ -397,7 +401,9 @@
             <div class="panel-actions">
               <button id="pin" type="button">Pin to top of library</button
               ><button id="fork" type="button">Duplicate artifact</button
-              ><button id="copy-source" type="button">Copy source</button>
+              ><button id="copy-source" type="button">Copy source</button
+              ><label id="replace-file-label" class="button file-label" hidden
+                >Replace file<input id="replace-file" type="file" /></label>
             </div>
             <div class="panel-actions panel-danger">
               <button id="archive" type="button">Archive artifact</button
@@ -465,6 +471,7 @@
             <option value="svg">SVG — graphics</option>
             <option value="mermaid">Mermaid — diagrams</option>
             <option value="code">Code — plain source</option>
+            <option value="file">File — a zip or anything else to download</option>
           </select></label
         ><label
           >Source<textarea
@@ -475,8 +482,15 @@
             placeholder="Paste your source here, or import a file below…"
           ></textarea>
         </label>
+        <p id="create-file-hint" hidden>
+          Up to 256 MiB. It opens as a page with a Download button, and
+          <strong>Share → Public read-only link</strong> makes a link for anyone.
+        </p>
+        <progress id="create-progress" max="1" value="0" hidden></progress>
         <div class="dialog-bottom">
-          <label class="button file-label"
+          <label id="create-file-label" class="button file-label" hidden
+            ><span id="create-file-name">Choose file</span><input id="create-file" type="file" /></label
+          ><label id="import-label" class="button file-label"
             >Import file<input
               id="import-file"
               type="file"

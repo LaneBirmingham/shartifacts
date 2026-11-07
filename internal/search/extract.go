@@ -1,6 +1,7 @@
 package search
 
 import (
+	"encoding/json"
 	"html"
 	"path"
 	"regexp"
@@ -43,6 +44,14 @@ func (t *text) add(kind, src string) {
 		t.body = append(t.body, prose(src, false)...)
 	case "style":
 		t.code = append(t.code, src)
+	case "file":
+		// The file's name is what people remember, not its hash; its bytes are not read.
+		var f struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal([]byte(src), &f) == nil {
+			t.body = append(t.body, f.Name)
+		}
 	default: // code, mermaid and data files are read as they are
 		t.body = append(t.body, src)
 	}
@@ -174,13 +183,17 @@ var (
 	kindWords = map[string]string{
 		"html": "html page web", "react": "react app component", "markdown": "markdown document",
 		"slides": "slides presentation", "svg": "svg image vector drawing", "mermaid": "mermaid diagram",
-		"code": "code snippet",
+		"code": "code snippet", "file": "file download attachment archive zip",
 	}
 )
 
 // traits are what an artifact contains (video, chart, form…), for has: filters and for
 // finding things by what they are rather than what they say.
 func traits(kind string, sources []string) []string {
+	// A file's content only names its upload; it does not contain what that upload is.
+	if kind == "file" {
+		return nil
+	}
 	found := map[string]bool{}
 	switch kind {
 	case "svg":

@@ -1,6 +1,6 @@
 # Artifacts
 
-An artifact is one self-contained thing an agent or a person made: a page, a component, a document, a deck, a diagram or a source file. Every save is a numbered, immutable version.
+An artifact is one self-contained thing an agent or a person made: a page, a component, a document, a deck, a diagram, a source file or a file to download. Every save is a numbered, immutable version.
 
 ## Kinds
 
@@ -13,6 +13,9 @@ An artifact is one self-contained thing an agent or a person made: a page, a com
 | `svg`      | SVG markup                                     | Vector graphic                 |
 | `mermaid`  | Mermaid diagram source                         | Rendered diagram               |
 | `code`     | Any text                                       | Syntax-highlighted source      |
+| `file`     | The `/media/` URL of an uploaded file          | Name, size and a Download button |
+
+A `file` artifact is how you hand someone a zip or anything else that isn't a page: **⋯ → Share a file** in the sidebar, or see [Files](media.md#files-to-download). It has versions, comments and share links like any artifact, but no source to edit: **Replace file** in the details panel adds a version, and **Edit title, description & tags** still works.
 
 React is TSX compiled locally by esbuild, and may import the bundled libraries listed below. Other package imports, filesystem imports, and URL imports are rejected with a visible preview error (and a `warnings` entry for agents). Style with Tailwind classes, inline CSS, or `<style>`. This version handles single-file artifacts, not multi-file app projects, arbitrary npm installations, or server-side execution.
 
