@@ -7,8 +7,8 @@ package server
 // URL hash. Printing gives one slide per page. A slide holding only an h1 and up to two
 // short paragraphs becomes a centered title slide.
 const slidesDeck = `<style>
-:root{--canvas:#f9f8f6;--ink:#1a1716;--body:#403b38;--muted:#6e6863;--primary:#b5523b;--hairline:#e6e0d9;--card:#ebe6e0;--display:"Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-html,body{height:100%;margin:0;background:#1c1a19;overflow:hidden}
+:root{--canvas:light-dark(#f9f8f6,#1c1a19);--ink:light-dark(#1a1716,#f5f1ee);--body:light-dark(#403b38,#cec6c1);--muted:light-dark(#6e6863,#a69e98);--primary:light-dark(#b5523b,#e8917a);--hairline:light-dark(#e6e0d9,#3c3734);--card:light-dark(#ebe6e0,#2b2826);--display:"Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+html,body{height:100%;margin:0;background:light-dark(#1c1a19,#141211);overflow:hidden}
 #deck{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform-origin:center}
 .slide{position:absolute;inset:0;display:none;box-sizing:border-box;padding:72px 96px;background:var(--canvas);color:var(--body);font:28px/1.45 var(--sans);overflow:hidden}
 .slide.active,.measuring .slide{display:flex;flex-direction:column}.measuring .slide:not(.active){visibility:hidden}
@@ -17,8 +17,8 @@ html,body{height:100%;margin:0;background:#1c1a19;overflow:hidden}
 .slide p,.slide ul,.slide ol{margin:0 0 20px}.slide li{margin:6px 0}.slide li::marker{color:var(--primary)}
 .slide a{color:var(--primary)}.slide strong{color:var(--ink)}
 .slide img,.slide svg,.slide video{max-width:100%;max-height:440px;object-fit:contain}
-.slide pre{background:#1c1a19;color:#f9f8f6;border-radius:12px;padding:24px 28px;font-size:20px;line-height:1.5;overflow:auto;white-space:pre}
-.slide pre code.hljs{color:inherit}.slide pre.mermaid{background:none;color:inherit;text-align:center}
+.slide pre{background:light-dark(#1c1a19,#141211);box-shadow:inset 0 0 0 1px light-dark(transparent,#3c3734);color:#f9f8f6;border-radius:12px;padding:24px 28px;font-size:20px;line-height:1.5;overflow:auto;white-space:pre}
+.slide pre code.hljs{color:inherit}.slide pre.mermaid{background:none;box-shadow:none;color:inherit;text-align:center}
 .slide code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85em}
 .slide table{border-collapse:collapse;font-size:22px}.slide td,.slide th{border-bottom:1px solid var(--hairline);padding:10px 16px;text-align:left}
 .slide blockquote{margin:0;padding-left:28px;border-left:4px solid var(--primary);font-family:var(--display);font-size:40px;color:var(--ink)}

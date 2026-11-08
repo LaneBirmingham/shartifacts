@@ -14,7 +14,11 @@ const previewSandbox = "allow-scripts allow-forms allow-modals allow-downloads a
 //     APIs (readFile reads Media library files by name). The
 //     opaque-origin frame cannot reach the server, so calls go to the embedding page
 //     (web/bridge.js), which saves storage for the artifact it is showing. Opened on its
-//     own, storage lasts only for the page and window.claude is unavailable.
+//     own, storage lasts only for the page and window.claude is unavailable;
+//   - follows the embedding page's light/dark choice: it asks to (shartifacts-theme-request,
+//     which web/theme.js answers then and on every change), and a shartifacts-theme message
+//     sets the root's data-scheme, which the design system's tokens read, and fires a
+//     shartifacts:scheme event on the document for pages that draw colors themselves.
 const previewRuntime = `<script>(()=>{
 const show=m=>{const p=document.createElement('pre');p.id='error';p.textContent=m;(document.body||document.documentElement).append(p)};
 const seen=new Set(),report=m=>{m=String(m);if(parent!==window&&seen.size<10&&!seen.has(m)){seen.add(m);parent.postMessage({type:'shartifacts-error',message:m},'*')}};
@@ -24,7 +28,8 @@ addEventListener('securitypolicyviolation',e=>report('blocked by the sandbox: '+
 const dir=(location.pathname.match(/^\/(?:preview\/[^/]+\/\d+|draft-preview\/[^/]+)\//)||[])[0];
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[href]');if(!a||e.defaultPrevented)return;const h=a.getAttribute('href');if(!h||h[0]==='#'||/^javascript:/i.test(h)||a.hasAttribute('download'))return;const u=new URL(h,location.href);if(dir&&u.host===location.host&&u.pathname.startsWith(dir))return;if(!a.target||/^_(self|parent|top)$/i.test(a.target)){a.target='_blank';a.rel='noopener noreferrer'}});
 const pending=new Map();let seq=0,warned=false;
-addEventListener('message',e=>{const d=e.data;if(e.source!==parent||!d||d.type!=='shartifacts-result')return;const p=pending.get(d.id);if(!p)return;pending.delete(d.id);d.error?p.reject(new Error(d.error)):p.resolve(d.result)});
+addEventListener('message',e=>{const d=e.data;if(e.source!==parent||!d)return;if(d.type==='shartifacts-theme'){if((d.theme==='light'||d.theme==='dark')&&document.documentElement.dataset.scheme!==d.theme){document.documentElement.dataset.scheme=d.theme;document.dispatchEvent(new CustomEvent('shartifacts:scheme',{detail:d.theme}))}return}if(d.type!=='shartifacts-result')return;const p=pending.get(d.id);if(!p)return;pending.delete(d.id);d.error?p.reject(new Error(d.error)):p.resolve(d.result)});
+if(parent!==window)parent.postMessage({type:'shartifacts-theme-request'},'*');
 const memory={false:new Map(),true:new Map()};
 const local=(op,a)=>{const m=memory[a.shared];if(op==='get')return m.has(a.key)?{key:a.key,value:m.get(a.key),shared:a.shared}:null;if(op==='set'){m.set(a.key,a.value);return{key:a.key,value:a.value,shared:a.shared}}if(op==='delete')return{key:a.key,deleted:m.delete(a.key),shared:a.shared};return{keys:[...m.keys()].filter(k=>k.startsWith(a.prefix)).sort(),prefix:a.prefix,shared:a.shared}};
 const send=(type,a,ms)=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});parent.postMessage({type,id,...a},'*');setTimeout(()=>{if(pending.delete(id))reject(new Error(type.slice(12)+' did not respond'))},ms)});

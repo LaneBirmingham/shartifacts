@@ -159,6 +159,38 @@ func TestPreviewDraft(t *testing.T) {
 		t.Fatal("draft persisted as an artifact")
 	}
 }
+
+// The embedding page's light/dark cookie reaches a preview as data-scheme on its root, and
+// only the two known values do: anything else would be markup an artifact did not write.
+func TestPreviewScheme(t *testing.T) {
+	h := testServer(t)
+	for _, tc := range []struct{ cookie, want string }{
+		{"", "<html>"},
+		{"dark", `<html data-scheme="dark">`},
+		{"light", `<html data-scheme="light">`},
+		{"Dark", "<html>"},
+		{`dark" onload="x`, "<html>"},
+		{"system", "<html>"},
+	} {
+		w := request(h, "POST", "/api/previews", `{"title":"Draft","kind":"markdown","content":"# hi"}`)
+		var d map[string]string
+		json.Unmarshal(w.Body.Bytes(), &d)
+		r := httptest.NewRequest("GET", "http://127.0.0.1:8080"+d["url"], nil)
+		r.RemoteAddr = "192.168.1.9:12345"
+		if tc.cookie != "" {
+			r.AddCookie(&http.Cookie{Name: "shartifacts-scheme", Value: tc.cookie})
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		body := rec.Body.String()
+		if rec.Code != 200 || !strings.HasPrefix(body, "<!doctype html>"+tc.want+"<head>") {
+			t.Fatalf("cookie %q: got %.60q", tc.cookie, body)
+		}
+		if !strings.Contains(body, "color-scheme:light dark") {
+			t.Fatal("document style lacks the scheme rules")
+		}
+	}
+}
 func TestRejectBadJSON(t *testing.T) {
 	h := testServer(t)
 	for _, body := range []string{`{`, `{} {}`, `{"title":"x","kind":"html","unknown":1}`, `{"title":"x","kind":"unknown"}`} {

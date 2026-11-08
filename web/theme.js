@@ -2,6 +2,9 @@
 // paints in the right theme; every [data-theme-toggle] button flips it and saves it.
 // The palette (palettes.css) is a separate choice, made in any [data-palette-picker].
 // Both are saved per browser and followed live by the browser's other tabs.
+// Artifacts follow the light/dark choice too (the design system's data-scheme): the
+// shartifacts-scheme cookie lets the server render a preview in it from the first paint,
+// and every preview then asks to follow it (below), so it hears when it changes.
 (() => {
   const root = document.documentElement;
   const system = matchMedia("(prefers-color-scheme: dark)");
@@ -37,6 +40,7 @@
   // Sandboxed pages that asked to follow the theme: they cannot read the saved choice from
   // their opaque origin. Only those that ask are told, so other frames get no extra messages.
   const followers = new Set();
+  let written = null;
   const tell = (frame, theme) => frame.postMessage({ type: "shartifacts-theme", theme }, "*");
   addEventListener("message", (e) => {
     if (e.data?.type !== "shartifacts-theme-request" || !e.source) return;
@@ -46,6 +50,10 @@
   function apply() {
     const theme = choice || (system.matches ? "dark" : "light");
     root.dataset.theme = theme;
+    if (theme !== written) {
+      document.cookie = `shartifacts-scheme=${theme}; path=/; max-age=31536000; SameSite=Lax`;
+      written = theme;
+    }
     for (const frame of followers) {
       if (frame.closed) followers.delete(frame);
       else tell(frame, theme);

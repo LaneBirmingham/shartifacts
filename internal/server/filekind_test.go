@@ -118,7 +118,7 @@ func TestFileArtifactDownloads(t *testing.T) {
 
 	// The page follows the theme it is told, by its parent only, and the system's otherwise.
 	body := w.Body.String()
-	for _, want := range []string{"shartifacts-theme-request", "e.source===parent", "prefers-color-scheme:dark", ":root[data-theme=dark]"} {
+	for _, want := range []string{"shartifacts-theme-request", "e.source!==parent", "color-scheme:light dark", ":root[data-scheme=dark]", "light-dark(#f9f8f6,#1c1a19)"} {
 		if !strings.Contains(body, want) {
 			t.Fatal("missing", want)
 		}

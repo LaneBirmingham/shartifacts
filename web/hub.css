@@ -326,7 +326,7 @@ code {
   color: var(--body-strong);
 }
 .runtime .warn {
-  color: var(--warning-text, #8a6400);
+  color: var(--warning-text);
 }
 .section-heading {
   display: flex;
@@ -766,7 +766,7 @@ code {
 }
 .version-warn {
   margin: 6px 0 0;
-  color: var(--warning-text, #8a6400);
+  color: var(--warning-text);
   font-size: 13px;
 }
 .version-buttons {

@@ -819,7 +819,7 @@ h1 em {
   background: rgb(198 69 69 / 18%);
 }
 .diff-line.ins span:nth-child(3) {
-  color: var(--success);
+  color: var(--success-text);
 }
 .diff-line.del span:nth-child(3) {
   color: #e07a7a;
@@ -1295,7 +1295,7 @@ button.thread-target:hover .thread-target-name {
   border-left: 3px solid var(--muted-soft);
 }
 .danger {
-  color: var(--error);
+  color: var(--error-text);
 }
 dialog {
   border: 1px solid var(--hairline);
@@ -1374,7 +1374,7 @@ dialog p {
   color: var(--muted);
 }
 .form-error {
-  color: var(--error);
+  color: var(--error-text);
 }
 .copy-row {
   display: flex;
