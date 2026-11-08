@@ -19,7 +19,7 @@ import (
 // plus a .2, .3 suffix when more than one ships in a day. It is what an agent sees in the
 // MCP handshake, so it moves only with the CHANGELOG heading and the git tag of the same
 // name — never ahead of them.
-const appVersion = "2026.10.28"
+const appVersion = "2026.11.08"
 
 // designRules is get_design_system's guide to the warm editorial design system (the
 // Terracotta palette); the html_starter after it carries the same tokens as CSS.
