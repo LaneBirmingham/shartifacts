@@ -23,13 +23,28 @@ const appVersion = "2026.10.28"
 
 // designRules is get_design_system's guide to the warm editorial design system (the
 // Terracotta palette); the html_starter after it carries the same tokens as CSS.
-const designRules = `shartifacts design system: warm editorial. A warm greige paper canvas, regular-weight serif headlines with negative tracking over a humanist sans, one terracotta accent used scarcely, stone feature cards and dark product surfaces. It should read like a literary publication, not a SaaS template. Copy the style element from html_starter into HTML artifacts (a rendered style element for React) and use its variables and classes; never inline hex.
+const designRules = `shartifacts design system: warm editorial, in light and dark. A warm greige paper canvas (warm charcoal at night), regular-weight serif headlines with negative tracking over a humanist sans, one terracotta accent used scarcely, stone feature cards and dark product surfaces. It should read like a literary publication, not a SaaS template. Copy the style element from html_starter into HTML artifacts (a rendered style element for React) and use its variables and classes; never inline hex.
 
-Colors (CSS variables)
-- Brand: --primary #b5523b terracotta (primary CTAs, terracotta callouts, inline links), --primary-active #9c4330 (pressed), --primary-disabled #e6e0d9, --primary-text (terracotta as text), --accent-slate #5b7fa6 (status dots, live indicators, sparingly), --accent-olive #9a9a4a (category badges, inline highlights).
-- Surfaces: --canvas #f9f8f6 (page floor; never pure white or cool gray), --surface-soft #f2efeb (soft bands, dividers), --surface-card #ebe6e0 (feature cards), --surface-cream-strong #e3dcd4 (selected tabs, emphasized bands), --surface-dark #1c1a19 (code, product mockups, featured cards, footer), --surface-dark-elevated #2b2826 (cards and buttons inside dark bands), --surface-dark-soft #232120 (code blocks inside dark cards), --hairline #e6e0d9 (1px borders), --hairline-soft #ece8e3 (faint dividers).
-- Text: --ink #1a1716 (headlines, primary text), --body-strong #2a2624 (lead text), --body #403b38 (running text), --muted #6e6863 (sub-heads, breadcrumbs), --muted-soft #8f8882 (captions, fine print), --on-primary #ffffff, --on-dark #f9f8f6, --on-dark-soft #a69e98.
-- Semantic: --success #5db872, --warning #d4a017, --error #c64545.
+Colors (CSS variables, light / dark)
+- Every color token is written light-dark(light, dark), so one stylesheet serves both modes: style with the tokens and the dark side comes free. Values below are light / dark.
+- Brand: --primary #b5523b in both modes (primary CTAs, terracotta callouts), --primary-active #9c4330 (pressed), --primary-disabled #e6e0d9 / #3c3734, --primary-text #b5523b / #e8917a (links and terracotta emphasis as text; never --primary for text), --accent-slate #5b7fa6 / #86a7cc (status dots, live indicators, sparingly), --accent-olive #9a9a4a / #b8b86a (category badges, inline highlights).
+- Surfaces: --canvas #f9f8f6 / #1c1a19 (page floor; never pure white, pure black or cool gray), --surface-soft #f2efeb / #232120 (soft bands, dividers), --surface-card #ebe6e0 / #2b2826 (feature cards), --surface-cream-strong #e3dcd4 / #36322f (selected tabs, emphasized bands), --surface-dark #1c1a19 / #141211 (code, product mockups, featured cards, footer), --surface-dark-elevated #2b2826 (cards and buttons inside dark bands), --surface-dark-soft #232120 / #1a1817 (code blocks inside dark cards), --surface-dark-edge transparent / #3c3734 (the inset hairline that keeps dark bands visible on a dark canvas), --hairline #e6e0d9 / #3c3734 (1px borders), --hairline-soft #ece8e3 / #2f2b29 (faint dividers).
+- Text: --ink #1a1716 / #f5f1ee (headlines, primary text), --body-strong #2a2624 / #e9e3df (lead text), --body #403b38 / #cec6c1 (running text), --muted #6e6863 / #a69e98 (sub-heads, breadcrumbs), --muted-soft #8f8882 (captions, fine print), --on-primary #ffffff, --on-dark #f9f8f6, --on-dark-soft #a69e98.
+- Status: fills --success #5db872, --warning #d4a017, --error #c64545 (dots, bars, badges with white or ink text); as text use --success-text #2f7d43 / #7fcf92, --warning-text #8a6400 / #e3b341, --error-text #b23b3b / #e88080.
+- Depth: --shadow-sm, --focus-ring (both adjust per mode).
+
+Dark mode
+- The page follows the viewer: the system's preference by default, and inside shartifacts the workspace's light/dark switch, which it passes to the artifact as data-scheme on <html>. Nothing to wire up; the starter's color-scheme rules do it.
+- Pin a mode only when the content demands it (a print proof, a photo light table): <html data-theme="light"> or "dark". Printing is always light.
+- Dark is the same warm system at night, not an inversion: warm near-blacks, never #000 or cool grays; ink is warm off-white, never #fff for text.
+- Elevation goes lighter as it rises: canvas, then --surface-soft, --surface-card, --surface-cream-strong. Use those steps, not shadows, to separate layers; --shadow-sm only sharpens an edge.
+- Dark bands (pre, .card-dark, footer) sink below the canvas in dark mode and carry --surface-dark-edge as an inset 1px ring (box-shadow: inset 0 0 0 1px var(--surface-dark-edge)), as the starter's pre and .card-dark do.
+- Terracotta fills (button.primary, .callout, .badge-primary) stay the same hue with white text in both modes. Terracotta as text, links, icons or strokes uses --primary-text, which lightens in dark.
+- Status colors as text use the *-text tokens; the fills fail contrast as text in one mode or the other.
+- Keep text at WCAG AA in both modes: 4.5:1 for body text, 3:1 for display type. On --canvas every text token passes in both modes except --muted-soft, which is for non-essential fine print only. On --surface-card and --surface-cream-strong, small text uses --body or --ink. Any new color needs a light-dark() pair that passes in both.
+- Images and media: photos stay as they are. Line art, icons, SVG and chart strokes use currentColor or tokens so they flip; never bake a light background into an SVG or a chart (chart.js, recharts and plotly need their grid, tick and text colors read from the tokens, via getComputedStyle when the library takes literal colors, and redrawn on the document's shartifacts:scheme event).
+- Code that must draw colors itself reads the tokens rather than guessing the mode, and listens for shartifacts:scheme on document to redraw when the viewer switches.
+- Check both: anything inline-styled with hex will be wrong in one mode, which is why hex is never inlined.
 
 Typography
 - Display (h1-h3): --font-display, Cormorant Garamond. Always weight 400 with negative tracking; never bold. When in doubt, go bigger, not bolder.
@@ -52,7 +67,7 @@ Layout
 
 Shape and depth
 - Radii: --radius-xs 4 (tiny accents), sm 6 (small inline buttons), md 8 (buttons, inputs, tabs), lg 12 (cards), xl 16 (hero containers), pill 9999 (badges, avatars, circular icon buttons).
-- Depth is color-block first: paper against stone card against dark. Shadows are rare, and at most 0 1px 3px rgba(26,23,22,0.08).
+- Depth is color-block first: paper against stone card against dark. Shadows are rare, and at most --shadow-sm.
 - Avatars are 40px circles. Illustrations are simple line art in terracotta and dark strokes on paper, never photoreal. Prefer showing real code or product UI on dark cards.
 
 Components (classes in the starter)
@@ -77,9 +92,9 @@ Components (classes in the starter)
 Rules
 - Use terracotta scarcely on individual elements and generously only on full-bleed callouts.
 - Alternate surface modes between bands: paper, stone card, dark, paper, terracotta callout, dark footer.
-- There are three surface tones (paper, terracotta, dark). Add no fourth: no purple, blue or green sections, no gradients.
+- There are three surface tones (paper, terracotta, dark), in either mode. Add no fourth: no purple, blue or green sections, no gradients.
 - No hover treatments. Only the primary button changes, darkening on press.
-- Never use a sans for display headlines, and never use cool gray or white canvases.
+- Never use a sans for display headlines, and never use cool gray, white or black canvases.
 
 Explicit user instructions take priority. Preserve existing designs when editing. Source is never styled automatically.`
 

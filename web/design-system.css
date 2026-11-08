@@ -30,36 +30,51 @@
   font-display: swap;
 }
 :root {
+  /* Light and dark, one token list. Each color is light-dark(light, dark): the root's
+     color-scheme picks the side, so a component written with tokens needs no dark rules
+     of its own. The page follows the system until something states a scheme (below). */
+  color-scheme: light dark;
   /* Terracotta: a fired-brick primary on greige paper. The workspace's other palettes
-     (palettes.css) override these; artifacts always get this one. */
-  --canvas: #f9f8f6;
+     (palettes.css) override these; artifacts always get this one. Fills keep their hue
+     in dark mode, so white text stays readable on them; the *-text tokens lighten
+     instead, since a fill dark enough for white text is too dark to read as text. */
+  --canvas: light-dark(#f9f8f6, #1c1a19);
   --primary: #b5523b;
   --primary-active: #9c4330;
-  --primary-disabled: #e6e0d9;
-  /* Primary as text (links, emphasis). The same as --primary on light paper; dark
-     themes lighten it, since a fill dark enough for white text is too dark to read on. */
-  --primary-text: var(--primary);
-  --accent-slate: #5b7fa6;
-  --accent-olive: #9a9a4a;
-  --surface-soft: #f2efeb;
-  --surface-card: #ebe6e0;
-  --surface-cream-strong: #e3dcd4;
-  --surface-dark: #1c1a19;
+  --primary-disabled: light-dark(#e6e0d9, #3c3734);
+  --primary-text: light-dark(#b5523b, #e8917a);
+  --accent-slate: light-dark(#5b7fa6, #86a7cc);
+  --accent-olive: light-dark(#9a9a4a, #b8b86a);
+  --surface-soft: light-dark(#f2efeb, #232120);
+  --surface-card: light-dark(#ebe6e0, #2b2826);
+  --surface-cream-strong: light-dark(#e3dcd4, #36322f);
+  /* The dark band. In dark mode it sinks below the canvas rather than inverting, and
+     --surface-dark-edge gives it the hairline it needs to keep its shape. */
+  --surface-dark: light-dark(#1c1a19, #141211);
   --surface-dark-elevated: #2b2826;
-  --surface-dark-soft: #232120;
-  --hairline: #e6e0d9;
-  --hairline-soft: #ece8e3;
-  --ink: #1a1716;
-  --body-strong: #2a2624;
-  --body: #403b38;
-  --muted: #6e6863;
+  --surface-dark-soft: light-dark(#232120, #1a1817);
+  --surface-dark-edge: light-dark(transparent, #3c3734);
+  --hairline: light-dark(#e6e0d9, #3c3734);
+  --hairline-soft: light-dark(#ece8e3, #2f2b29);
+  --ink: light-dark(#1a1716, #f5f1ee);
+  --body-strong: light-dark(#2a2624, #e9e3df);
+  --body: light-dark(#403b38, #cec6c1);
+  --muted: light-dark(#6e6863, #a69e98);
   --muted-soft: #8f8882;
   --on-primary: #ffffff;
   --on-dark: #f9f8f6;
   --on-dark-soft: #a69e98;
+  /* Status fills (dots, bars, badges), then the same hues as readable text. */
   --success: #5db872;
   --warning: #d4a017;
   --error: #c64545;
+  --success-text: light-dark(#2f7d43, #7fcf92);
+  --warning-text: light-dark(#8a6400, #e3b341);
+  --error-text: light-dark(#b23b3b, #e88080);
+  /* Depth. Shadows barely read on a dark canvas, so dark mode leans on the lighter
+     surface tones instead and the shadow only darkens the edge. */
+  --shadow-sm: 0 1px 3px light-dark(rgb(26 23 22 / 8%), rgb(0 0 0 / 40%));
+  --focus-ring: 0 0 0 3px light-dark(rgb(181 82 59 / 15%), rgb(181 82 59 / 35%));
   --font-display:
     "Cormorant Garamond", "EB Garamond", Garamond, "Times New Roman", serif;
   --font-body:
@@ -80,10 +95,28 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-pill: 9999px;
-  --focus-ring: 0 0 0 3px rgb(181 82 59 / 15%);
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--canvas);
+}
+/* Who decides the scheme, weakest first: the system (above); data-scheme, which the page
+   showing an artifact sets to its own light/dark choice; and data-theme, which an author
+   sets on <html> to pin one (the workspace's own pages set it too). Print is paper. */
+:root[data-scheme="light"],
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-scheme="dark"],
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-scheme="dark"][data-theme="light"] {
+  color-scheme: light;
+}
+@media print {
+  :root:root:root {
+    color-scheme: light;
+  }
 }
 * {
   box-sizing: border-box;
@@ -196,6 +229,7 @@ pre {
   background: var(--surface-dark);
   color: var(--on-dark);
   border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--surface-dark-edge);
   overflow-x: auto;
 }
 .artifact-page {
@@ -216,6 +250,7 @@ pre {
   color: var(--on-dark);
   padding: var(--space-xl);
   border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--surface-dark-edge);
 }
 .card-dark p {
   color: var(--on-dark-soft);

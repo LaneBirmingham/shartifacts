@@ -232,7 +232,7 @@ func (s *Server) renderPreview(w http.ResponseWriter, r *http.Request, rev store
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", csp)
 	// This header keeps a standalone preview in the same opaque-origin sandbox as an iframe.
-	fmt.Fprint(w, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;color:#242922;background:#fff;font:16px/1.6 Georgia,serif}#document{max-width:860px;padding:32px;margin:auto}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f1;padding:18px;border-radius:8px}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px}img,svg,video{max-width:100%}#error{color:#a12a24;padding:20px;font:14px/1.5 monospace;white-space:pre-wrap}</style>`+documentStyle(rev.Kind)+previewRuntime+`<script src="`+html.EscapeString(origin)+`/runtime.js"></script></head><body>`)
+	fmt.Fprint(w, `<!doctype html><html`+previewScheme(r)+`><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;color:#242922;background:#fff;font:16px/1.6 Georgia,serif}#document{max-width:860px;padding:32px;margin:auto}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f1;padding:18px;border-radius:8px}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px}img,svg,video{max-width:100%}#error{color:#a12a24;padding:20px;font:14px/1.5 monospace;white-space:pre-wrap}</style>`+documentStyle(rev.Kind)+previewRuntime+`<script src="`+html.EscapeString(origin)+`/runtime.js"></script></head><body>`)
 	data, _ := json.Marshal(rev.Content)
 	switch rev.Kind {
 	case "html":
@@ -281,7 +281,8 @@ func (s *Server) renderPreview(w http.ResponseWriter, r *http.Request, rev store
 			fmt.Fprint(w, slidesDeck)
 		}
 		// Diagrams lay out while every slide is measurable; the deck then shows one at a time.
-		fmt.Fprint(w, `<script>mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'neutral'});const deckEl=document.getElementById('deck');deckEl&&deckEl.classList.add('measuring');mermaid.run().catch(e=>{(document.getElementById('document')||document.querySelector('.slide.active')||document.body).append(document.createTextNode(String(e)))}).finally(()=>deckEl&&deckEl.classList.remove('measuring'))</script>`)
+		// They take the scheme's colors (Mermaid's neutral theme, or the dark tokens), and redraw from their source when it changes.
+		fmt.Fprint(w, `<script>{const deckEl=document.getElementById('deck');const scheme=()=>{const d=document.documentElement.dataset;return d.theme||d.scheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};let drawn;const draw=()=>{drawn=scheme();mermaid.initialize(Object.assign({startOnLoad:false,securityLevel:'strict'},drawn==='dark'?{theme:'base',themeVariables:{darkMode:true,background:'#1c1a19',primaryColor:'#2b2826',primaryTextColor:'#f5f1ee',primaryBorderColor:'#4a4441',secondaryColor:'#36322f',tertiaryColor:'#232120',lineColor:'#a69e98',textColor:'#cec6c1',noteBkgColor:'#36322f',edgeLabelBackground:'#1c1a19',clusterBkg:'#232120',clusterBorder:'#3c3734',noteTextColor:'#e9e3df',fontFamily:'Inter,sans-serif'}}:{theme:'neutral'}));document.querySelectorAll('pre.mermaid').forEach(p=>{if(p.dataset.source===undefined)p.dataset.source=p.textContent;else{p.textContent=p.dataset.source;p.removeAttribute('data-processed')}});deckEl&&deckEl.classList.add('measuring');mermaid.run().catch(e=>{(document.getElementById('document')||document.querySelector('.slide.active')||document.body).append(document.createTextNode(String(e)))}).finally(()=>deckEl&&deckEl.classList.remove('measuring'))};draw();document.addEventListener('shartifacts:scheme',()=>{if(scheme()!==drawn&&document.querySelector('pre.mermaid'))draw()})}</script>`)
 	default:
 		// The title's extension names the language when it has one (server.py, app.tsx).
 		lang, _ := json.Marshal(strings.ToLower(strings.TrimPrefix(path.Ext(rev.Title), ".")))
@@ -291,14 +292,9 @@ func (s *Server) renderPreview(w http.ResponseWriter, r *http.Request, rev store
 	fmt.Fprintf(w, `<script>addEventListener('load',()=>parent.postMessage({type:'shartifacts-preview-ready',url:%s},'*'));</script></body></html>`, readyURL)
 }
 
-// fileCardStyle follows the workspace's theme, which the page is told (fileCardTheme) and
-// otherwise the system's, when a preview is opened on its own.
-const fileCardStyle = `<style>:root{--file-canvas:#f9f8f6;--file-ink:#1a1716;--file-muted:#6e6863;--file-hairline:#e6e0d9;--file-badge:#fff}@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--file-canvas:#1c1a19;--file-ink:#f5f1ee;--file-muted:#a69e98;--file-hairline:#3c3734;--file-badge:#2b2826}}:root[data-theme=dark]{color-scheme:dark;--file-canvas:#1c1a19;--file-ink:#f5f1ee;--file-muted:#a69e98;--file-hairline:#3c3734;--file-badge:#2b2826}body{background:var(--file-canvas);color:var(--file-ink)}#file{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:100vh;box-sizing:border-box;padding:32px;text-align:center;overflow-wrap:anywhere}#file h1{font-size:36px;margin:12px 0 0;color:var(--file-ink)}#file p{margin:0;color:var(--file-muted)}.badge{font:500 13px "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;color:var(--file-muted);border:1px solid var(--file-hairline);border-radius:12px;padding:20px 18px;background:var(--file-badge)}.get{margin-top:20px;padding:12px 28px;border-radius:8px;background:#b5523b;color:#fff;font-weight:500;text-decoration:none}.get:hover{background:#9c4530}</style>`
-
-// fileCardTheme asks the page around this one for its theme and keeps following it (theme.js
-// answers). A sandboxed preview has an opaque origin, so it cannot read the saved choice. Only
-// its parent is listened to, and only the two themes are taken.
-const fileCardTheme = `<script>addEventListener('message',e=>{const d=e.data;if(e.source===parent&&d&&d.type==='shartifacts-theme'&&(d.theme==='light'||d.theme==='dark'))document.documentElement.dataset.theme=d.theme});if(parent!==window)parent.postMessage({type:'shartifacts-theme-request'},'*')</script>`
+// fileCardStyle is in the design system's light and dark colors; it follows the workspace's
+// theme like the other pages shartifacts renders (schemeCSS, previewRuntime).
+const fileCardStyle = `<style>body{background:light-dark(#f9f8f6,#1c1a19);color:light-dark(#1a1716,#f5f1ee)}#file{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:100vh;box-sizing:border-box;padding:32px;text-align:center;overflow-wrap:anywhere}#file h1{font-size:36px;margin:12px 0 0;color:light-dark(#1a1716,#f5f1ee)}#file p{margin:0;color:light-dark(#6e6863,#a69e98)}.badge{font:500 13px "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;color:light-dark(#6e6863,#a69e98);border:1px solid light-dark(#e6e0d9,#3c3734);border-radius:12px;padding:20px 18px;background:light-dark(#fff,#2b2826)}.get{margin-top:20px;padding:12px 28px;border-radius:8px;background:#b5523b;color:#fff;font-weight:500;text-decoration:none}.get:hover{background:#9c4530}</style>`
 
 // fileCard is a file artifact's page: what the file is and a way to get it. The download
 // attribute keeps the runtime from opening the link in a new tab, as it does other links, so
@@ -308,7 +304,7 @@ func (s *Server) fileCard(rev store.Revision, href string) string {
 	style := fileCardStyle
 	f, e := store.ParseFileRef(rev.Content)
 	if e != nil {
-		return style + `<main id="file"><p>This file could not be read.</p></main>` + fileCardTheme
+		return style + `<main id="file"><p>This file could not be read.</p></main>`
 	}
 	badge := strings.ToUpper(strings.TrimPrefix(path.Ext(f.Name), "."))
 	if badge == "" || len(badge) > 5 {
@@ -327,7 +323,7 @@ func (s *Server) fileCard(rev store.Revision, href string) string {
 	if file, _, e := s.Store.MediaPath(f.MediaID()); e != nil || !fileExists(file) {
 		action = `<p>This file has been deleted and can no longer be downloaded.</p>`
 	}
-	return style + `<main id="file"><div class="badge">` + html.EscapeString(badge) + `</div>` + heading + `<p>` + detail + `</p>` + action + `</main>` + fileCardTheme
+	return style + `<main id="file"><div class="badge">` + html.EscapeString(badge) + `</div>` + heading + `<p>` + detail + `</p>` + action + `</main>`
 }
 
 func fileExists(p string) bool {
@@ -349,6 +345,18 @@ func byteSize(n int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGT"[exp])
 }
 
+// previewScheme is the light/dark choice of the page showing the preview, which
+// web/theme.js keeps in the shartifacts-scheme cookie, as the root's data-scheme attribute.
+// It lets an artifact built on the design system paint in the right scheme from the start;
+// later changes arrive as messages (previewRuntime). Only the two known values pass, so the
+// cookie never reaches the page as markup.
+func previewScheme(r *http.Request) string {
+	if c, err := r.Cookie("shartifacts-scheme"); err == nil && (c.Value == "light" || c.Value == "dark") {
+		return ` data-scheme="` + c.Value + `"`
+	}
+	return ""
+}
+
 // designFonts declares the design system's open fonts, served from /vendor/fonts and
 // allowed by every preview's font-src.
 const designFonts = `@font-face{font-family:Inter;src:url(/vendor/fonts/inter.woff2) format("woff2");font-weight:100 900;font-display:swap}@font-face{font-family:"Cormorant Garamond";src:url(/vendor/fonts/cormorant-garamond-500.woff2) format("woff2");font-weight:400 600;font-display:swap}@font-face{font-family:"Cormorant Garamond";src:url(/vendor/fonts/cormorant-garamond-500-italic.woff2) format("woff2");font-weight:400 600;font-style:italic;font-display:swap}@font-face{font-family:"JetBrains Mono";src:url(/vendor/fonts/jetbrains-mono.woff2) format("woff2");font-weight:100 800;font-display:swap}`
@@ -360,8 +368,13 @@ func documentStyle(kind string) string {
 	case "html", "svg", "react":
 		return ""
 	}
-	return `<style>` + designFonts + `body{color:#403b38;background:#f9f8f6;font:16px/1.55 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}#document{max-width:760px;padding:48px 32px}h1,h2,h3,h4{font-family:"Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;font-weight:500;letter-spacing:-.02em;color:#1a1716}h1{font-size:48px;line-height:1.1}h2{font-size:36px;line-height:1.15}h3{font-size:28px;line-height:1.2}h4{font-size:22px;line-height:1.3}strong{color:#2a2624;font-weight:500}a{color:#b5523b}hr{border:0;border-top:1px solid #e6e0d9;margin:48px 0}blockquote{margin:24px 0;padding-left:24px;border-left:3px solid #e6e0d9;color:#6e6863}code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.875em}:not(pre)>code{background:#ebe6e0;padding:2px 6px;border-radius:4px}pre{background:#1c1a19;color:#f9f8f6;padding:24px;border-radius:12px;font-size:14px;line-height:1.6;white-space:pre;overflow-x:auto}pre code.hljs{background:none;color:inherit;padding:0}pre.mermaid{background:none;color:inherit;text-align:center}table{font-size:14px}td,th{border:0;border-bottom:1px solid #e6e0d9;padding:10px 14px;text-align:left}th{font-weight:500;color:#1a1716}li::marker{color:#8f8882}` + darkCode + `</style>`
+	return `<style>` + designFonts + schemeCSS + `body{color:light-dark(#403b38,#cec6c1);background:light-dark(#f9f8f6,#1c1a19);font:16px/1.55 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}#document{max-width:760px;padding:48px 32px}h1,h2,h3,h4{font-family:"Cormorant Garamond","EB Garamond",Garamond,"Times New Roman",serif;font-weight:500;letter-spacing:-.02em;color:light-dark(#1a1716,#f5f1ee)}h1{font-size:48px;line-height:1.1}h2{font-size:36px;line-height:1.15}h3{font-size:28px;line-height:1.2}h4{font-size:22px;line-height:1.3}strong{color:light-dark(#2a2624,#e9e3df);font-weight:500}a{color:light-dark(#b5523b,#e8917a)}hr{border:0;border-top:1px solid light-dark(#e6e0d9,#3c3734);margin:48px 0}blockquote{margin:24px 0;padding-left:24px;border-left:3px solid light-dark(#e6e0d9,#3c3734);color:light-dark(#6e6863,#a69e98)}code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.875em}:not(pre)>code{background:light-dark(#ebe6e0,#2b2826);padding:2px 6px;border-radius:4px}pre{background:light-dark(#1c1a19,#141211);box-shadow:inset 0 0 0 1px light-dark(transparent,#3c3734);color:#f9f8f6;padding:24px;border-radius:12px;font-size:14px;line-height:1.6;white-space:pre;overflow-x:auto}pre code.hljs{background:none;color:inherit;padding:0}pre.mermaid{background:none;box-shadow:none;color:inherit;text-align:center}table{font-size:14px}td,th{border:0;border-bottom:1px solid light-dark(#e6e0d9,#3c3734);padding:10px 14px;text-align:left}th{font-weight:500;color:light-dark(#1a1716,#f5f1ee)}li::marker{color:#8f8882}` + darkCode + `</style>`
 }
+
+// schemeCSS is the design system's choice of light or dark (web/design-system.css), for the
+// pages shartifacts renders itself: the system's, then the embedding page's data-scheme,
+// then an author's data-theme; print is always light.
+const schemeCSS = `:root{color-scheme:light dark}:root[data-scheme=light],:root[data-theme=light]{color-scheme:light}:root[data-scheme=dark],:root[data-theme=dark]{color-scheme:dark}:root[data-scheme=dark][data-theme=light]{color-scheme:light}@media print{:root:root:root{color-scheme:light}}`
 
 // darkCode recolors highlight.js tokens for the design system's dark code surfaces.
 const darkCode = `pre .hljs-comment,pre .hljs-quote{color:#8f8882;font-style:italic}pre .hljs-keyword,pre .hljs-selector-tag,pre .hljs-built_in,pre .hljs-type,pre .hljs-meta{color:#e8917a}pre .hljs-string,pre .hljs-regexp,pre .hljs-addition,pre .hljs-attribute,pre .hljs-attr{color:#9fc0d8}pre .hljs-number,pre .hljs-literal,pre .hljs-symbol,pre .hljs-variable,pre .hljs-template-variable{color:#e0a088}pre .hljs-title,pre .hljs-section,pre .hljs-name,pre .hljs-tag,pre .hljs-selector-class,pre .hljs-selector-id{color:#f0c9a8}pre .hljs-deletion{color:#e08080}pre .hljs-params,pre .hljs-subst,pre .hljs-punctuation,pre .hljs-property{color:#f9f8f6}`

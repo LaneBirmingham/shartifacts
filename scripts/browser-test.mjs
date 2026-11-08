@@ -349,6 +349,20 @@ try {
   await page.locator('[data-palette-choice="terracotta"]').click();
   await expect(page.locator("#share-toggle")).toHaveCSS("background-color", "rgb(181, 82, 59)");
   await page.keyboard.press("Escape");
+  // Dark mode: the light/dark switch reaches the artifact live (data-scheme), the design
+  // system's tokens follow it, terracotta fills keep their hue, and a reload paints the
+  // preview dark from the start (the cookie). Switching back restores light.
+  await page.locator("[data-theme-toggle]:visible").first().click();
+  await expect(frame.locator("html")).toHaveAttribute("data-scheme", "dark");
+  await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(28, 26, 25)");
+  await expect(frame.locator(".card")).toHaveCSS("background-color", "rgb(43, 40, 38)");
+  await expect(frame.locator(".primary")).toHaveCSS("background-color", "rgb(181, 82, 59)");
+  await page.reload();
+  await expect(frame.locator("html")).toHaveAttribute("data-scheme", "dark");
+  await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(28, 26, 25)");
+  await page.locator("[data-theme-toggle]:visible").first().click();
+  await expect(frame.locator("html")).toHaveAttribute("data-scheme", "light");
+  await expect(frame.locator("body")).toHaveCSS("background-color", "rgb(249, 248, 246)");
   await expect
     .poll(() => frame.locator("#direct-video").evaluate((v) => v.readyState))
     .toBeGreaterThanOrEqual(2);
@@ -1254,7 +1268,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await page.locator("#share-toggle").click();
   assert.deepEqual(await downloadFrom(page.locator("#download")), ["bundle.zip", zipBytes.toString("latin1")]);
   // Its page follows the theme, as it changes and when it loads in one.
-  const fileTheme = () => fileFrame.locator("body").evaluate((b) => [document.documentElement.dataset.theme, getComputedStyle(b).backgroundColor]);
+  const fileTheme = () => fileFrame.locator("body").evaluate((b) => [document.documentElement.dataset.scheme, getComputedStyle(b).backgroundColor]);
   const toggleTheme = () => page.locator("#sidebar [data-theme-toggle], [data-theme-toggle]").first().click();
   const startTheme = await page.evaluate(() => document.documentElement.dataset.theme);
   await expect.poll(async () => (await fileTheme())[0]).toBe(startTheme);
@@ -1342,7 +1356,7 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   // The "Broken" artifact errors on purpose, including in its home-page thumbnail.
   assert.deepEqual(errors.filter((e) => !e.includes("missingFunction")), [], "browser runtime errors");
   console.log(
-    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, commenting on the preview (comment mode, pins, quoted selections), installing as an app (manifest, icons), and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
+    "PASS: MCP upload URL discovery, direct curl upload and embed, shared design CSS and rendered styling, artifact dark mode, MCP chunked media upload, browser image upload, video decode/playback/seek/captions, byte ranges, media persistence, all six artifact types, live drafts, recovery, history, restore, downloads, MCP lifecycle, concurrent editing, sandbox, imports, library, search (content, typos, corrections, tags, filters, keyboard), tags, related artifacts, duplication, deletion, archiving (bulk select, the archive, restore, delete forever), mobile drawer/details/geometry, all-kind immersive mode, native video fullscreen, fullscreen fallback, pinned links, keyboard save, bundled React libraries, shadcn/ui, Tailwind, CDN scripts, window.storage, window.fs.readFile, window.claude (off), runtime error reports, comments, gallery thumbnails, Changes view, slides with math, multi-file artifacts, forms, dialogs, downloads, external links, full-page view, restart persistence, commenting on the preview (comment mode, pins, quoted selections), installing as an app (manifest, icons), and sign-in (password, login page, previews and media without the cookie, agent tokens over MCP, upload grants, revoking, signing out).",
   );
 } catch (e) {
   if (page) {
