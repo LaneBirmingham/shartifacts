@@ -38,7 +38,7 @@ type deployInput struct {
 	Note        string `json:"note,omitempty"`
 	Promote     *bool  `json:"promote,omitempty"`
 	BaseVersion *int   `json:"base_version,omitempty"`
-	// Template starts a new app from a built-in example ("notes").
+	// Template starts a new app from a built-in example ("notes", "notes-rust").
 	Template string `json:"template,omitempty"`
 }
 

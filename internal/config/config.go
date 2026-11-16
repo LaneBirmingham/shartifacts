@@ -62,6 +62,7 @@ type Config struct {
 	AppsDir      string
 	RunnerURL    string
 	GoBinary     string
+	CargoBinary  string
 	AppProcs     int
 	AppIdle      time.Duration
 	// AppKeepVersions is how many of each app's newest built versions keep their files.
@@ -100,6 +101,7 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.StringVar(&c.AppsDir, "apps-dir", "", "with -runner: the apps directory shared with shartifacts (its data/apps); default ./data/apps")
 	fs.StringVar(&c.RunnerURL, "runner-url", "", "build and run app backends in a runner sidecar at this URL, e.g. http://runner:8090; empty runs them beside this process")
 	fs.StringVar(&c.GoBinary, "go", "go", "Go toolchain that builds Go app backends")
+	fs.StringVar(&c.CargoBinary, "cargo", "cargo", "Rust toolchain's cargo that builds Rust app backends (with the rustc beside it)")
 	fs.IntVar(&c.AppProcs, "app-procs", 16, "most app backends running at once; the least recently used stops to make room")
 	fs.DurationVar(&c.AppIdle, "app-idle", 15*time.Minute, "stop an app backend after this long without requests")
 	fs.IntVar(&c.AppKeepVersions, "app-keep-versions", 20, "how many of each app's newest built versions keep their files, and so can be rolled back to; the live version and versions links pin are kept as well")

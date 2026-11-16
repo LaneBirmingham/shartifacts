@@ -1,10 +1,10 @@
-// Package runner builds and runs app backends. A backend is a native HTTP server (Go,
-// built here from source, or any prebuilt static binary such as Rust) started on demand,
-// one process per app version, listening on a loopback port shartifacts proxies to.
+// Package runner builds and runs app backends. A backend is a native HTTP server (Go or
+// Rust, built here from source, or any prebuilt static binary) started on demand, one
+// process per app version, listening on a loopback port shartifacts proxies to.
 //
 // It runs in one of two places. Local runs processes beside shartifacts itself (a single
 // container, or development). In the compose stack a runner sidecar does it: the same
-// binary started with -runner, holding the Go toolchain and mounting only the apps
+// binary started with -runner, holding the Go and Rust toolchains and mounting only the apps
 // directory, so backends never see artifacts or the rest of the data folder. shartifacts
 // reaches the sidecar through Remote, which speaks the HTTP API Handler serves.
 //
@@ -47,8 +47,13 @@ type Info struct {
 	OS   string `json:"os"`
 	Arch string `json:"arch"`
 	// Go is the toolchain version that builds Go backends; empty when there is none.
-	Go      string         `json:"go,omitempty"`
-	Sandbox sandbox.Status `json:"sandbox"`
+	Go string `json:"go,omitempty"`
+	// Rust is the rustc version that builds Rust backends, for RustTarget; empty when
+	// there is none. RustNote says why a toolchain that is here cannot build them.
+	Rust       string         `json:"rust,omitempty"`
+	RustTarget string         `json:"rust_target,omitempty"`
+	RustNote   string         `json:"rust_note,omitempty"`
+	Sandbox    sandbox.Status `json:"sandbox"`
 	// Remote is true when a runner sidecar runs backends.
 	Remote bool `json:"remote"`
 	// DataQuota is the most disk an app's DATA_DIR may take, in bytes; 0 is no limit.
@@ -61,9 +66,12 @@ type Info struct {
 type BuildRequest struct {
 	App     string `json:"app"`
 	Version int    `json:"version"`
-	// Kind is "go" (build Package from source) or "binary" (validate and install Binary).
+	// Kind is "go" (build the Go package Package), "rust" (build the crate in directory
+	// Package, and its binary Bin when it has several) or "binary" (validate and install
+	// Binary).
 	Kind    string `json:"kind"`
 	Package string `json:"package,omitempty"`
+	Bin     string `json:"bin,omitempty"`
 	Binary  string `json:"binary,omitempty"`
 }
 
@@ -125,6 +133,8 @@ type Local struct {
 	Dir string
 	// GoBinary builds Go backends ("" finds go on PATH).
 	GoBinary string
+	// CargoBinary builds Rust backends ("" finds cargo on PATH), with the rustc beside it.
+	CargoBinary string
 	// MaxProcs bounds running backends; the least recently used is stopped to make room.
 	MaxProcs int
 	// Idle stops a backend that has served nothing for this long.
@@ -154,7 +164,11 @@ type Local struct {
 	dataSize map[string]measured
 	goVer    string
 	goPath   string
-	stop     chan struct{}
+	rust     rustToolchain
+	// rustBuilds holds one token per Rust build running: one at a time, because a release
+	// build of a large crate graph can use gigabytes, and the runner's memory is shared.
+	rustBuilds chan struct{}
+	stop       chan struct{}
 	// sandbox is the confinement backends get; unusable notes why Landlock, though
 	// offered, cannot confine executables in Dir.
 	sandbox  sandbox.Status
@@ -216,6 +230,8 @@ func (l *Local) init() {
 				l.goPath, l.goVer = p, strings.TrimSpace(string(out))
 			}
 		}
+		l.rust = findRust(l.CargoBinary)
+		l.rustBuilds = make(chan struct{}, 1)
 		l.sandbox = sandbox.Probe()
 		if self, err := os.Executable(); err == nil && l.sandbox.Mechanism != "none" {
 			os.MkdirAll(l.Dir, 0700)
@@ -232,7 +248,26 @@ func (l *Local) init() {
 
 func (l *Local) Info(ctx context.Context) Info {
 	l.init()
-	return Info{OS: runtime.GOOS, Arch: runtime.GOARCH, Go: l.goVer, Sandbox: l.sandbox, Remote: l.Remote, DataQuota: l.DataQuota}
+	info := Info{OS: runtime.GOOS, Arch: runtime.GOARCH, Go: l.goVer, RustNote: l.rust.missing, Sandbox: l.sandbox, Remote: l.Remote, DataQuota: l.DataQuota}
+	if l.rust.cargo != "" && l.rust.missing == "" {
+		info.Rust, info.RustTarget = l.rust.version, l.rust.target
+	}
+	return info
+}
+
+// Toolchains says what builds backends from source, for logs: "go1.26.0 and Rust 1.90.0".
+func (i Info) Toolchains() string {
+	var have []string
+	if i.Go != "" {
+		have = append(have, i.Go)
+	}
+	if i.Rust != "" {
+		have = append(have, "Rust "+i.Rust)
+	}
+	if len(have) == 0 {
+		return "no Go or Rust toolchain, so only prebuilt backends deploy"
+	}
+	return strings.Join(have, " and ")
 }
 
 func (l *Local) appDir(app string) (string, error) {

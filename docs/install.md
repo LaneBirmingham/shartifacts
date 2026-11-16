@@ -23,7 +23,7 @@ If anyone or anything you don't trust shares your network, set an owner password
 Compose runs two containers:
 
 - **`shartifacts`** is the workspace, MCP server and share pages.
-- **`shartifacts-runner`** builds and runs app backends. It has the Go toolchain, mounts only `data/apps`, is never published, and has its own memory limit.
+- **`shartifacts-runner`** builds and runs app backends. It has the Go and Rust toolchains, mounts only `data/apps`, is never published, and has its own memory limit.
 
 The first build takes a few minutes. It downloads Node and Go images and builds the frontend libraries and the binary. Later builds use the cache.
 
@@ -37,7 +37,7 @@ go build -trimpath -o bin/shartifacts .
 ./bin/shartifacts -help                     # every flag, and its SHARTIFACTS_* variable
 ```
 
-Without the runner sidecar, app backends run beside shartifacts, so Go backends build with the `go` on your `PATH`. On Linux they are still confined with Landlock.
+Without the runner sidecar, app backends run beside shartifacts, so Go backends build with the `go` on your `PATH` and Rust backends with its `cargo`. On Linux they are still confined with Landlock.
 
 To keep it running with systemd:
 
@@ -91,7 +91,7 @@ Everything shartifacts keeps is in the data folder (`SHARTIFACTS_DATA`, `./data`
 | `<id>.json` (one per artifact, at the top) | Artifacts with every revision, description, tags and owner |
 | `db/`, `storage/`, `assets/`, `comments/` | Each artifact's documents, `window.storage`, uploads and comment threads |
 | `media/` | The Media library |
-| `apps/` | Apps: every version's source and build, their data (`apps/<id>/data/`) and settings |
+| `apps/` | Apps: every version's source and build, their data (`apps/<id>/data/`) and settings. `apps/.cache` holds Go and Rust build caches, which can be several GB and are rebuilt when missing: leave it out of backups |
 | `meta/` | People, share links, server secrets (session and label keys) and, with sign-in on, `auth.json`: the password hash and the digests of sessions and tokens |
 
 For a consistent snapshot, stop the stack briefly:

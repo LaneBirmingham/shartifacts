@@ -11,7 +11,14 @@
 # Rebuild it after a dependency change, not only after a toolchain one: the module cache is
 # part of the image, so `go` never downloads anything. Rebuild after adding a dependency and
 # the next job has it; leave it and the job fetches the difference on its own.
+
+# The Rust toolchain the runner image builds Rust backends with, for the tests that build
+# one (they skip without cargo). Its tests build standard-library crates, so they stay offline.
+FROM rust:1.100-alpine3.24 AS rust
+RUN cp -a "$(rustc --print sysroot)" /opt/rust
+
 FROM golang:1.26-alpine
+COPY --from=rust /opt/rust /usr/local/rust
 
 RUN apk add --no-cache \
       bash \
@@ -28,7 +35,8 @@ RUN apk add --no-cache \
 
 # The race detector needs cgo, so this is 1 rather than the 0 the release build uses.
 ENV GOTOOLCHAIN=local \
-    CGO_ENABLED=1
+    CGO_ENABLED=1 \
+    PATH=/usr/local/rust/bin:$PATH
 
 # The locked modules, so a job starts with every dependency compiled into reach. A job's
 # container is discarded afterwards; its Go build cache is not (the runner mounts one), and

@@ -76,7 +76,7 @@ function timeAgo(iso) {
 }
 
 const icon = (name) => (typeof artifactIcon === "function" && artifactIcon(name)) || "▦";
-const backendLabel = { go: "Go backend", binary: "Binary backend" };
+const backendLabel = { go: "Go backend", rust: "Rust backend", binary: "Binary backend" };
 
 // An app launched from its own icon on a phone's home screen (start_url adds ?installed,
 // apps_install.go) shows alone: no tab bar or toolbar around it, and it leaves the hub's
@@ -200,12 +200,20 @@ function renderRuntime() {
   const rt = state.runtime;
   if (!rt) return;
   const where = rt.remote ? "in the runner sidecar" : "beside shartifacts";
+  const built = [rt.go && `Go (${rt.go.replace(/^go/, "")})`, rt.rust && `Rust (${rt.rust})`].filter(Boolean);
   $("#rt-backends").textContent = rt.error
     ? `Runner unreachable: ${rt.error}`
-    : rt.go
-      ? `Go (${rt.go.replace(/^go/, "")}) or prebuilt binaries, ${rt.os}/${rt.arch}, ${where}`
-      : `Prebuilt binaries only (no Go toolchain), ${rt.os}/${rt.arch}, ${where}`;
-  $("#rt-backends").classList.toggle("warn", !!rt.error || !rt.go);
+    : built.length
+      ? `${built.join(", ")} or prebuilt binaries, ${rt.os}/${rt.arch}, ${where}`
+      : `Prebuilt binaries only (no Go or Rust toolchain), ${rt.os}/${rt.arch}, ${where}`;
+  $("#rt-backends").title = rt.rust_note || "";
+  $("#rt-backends").classList.toggle("warn", !!rt.error || !built.length);
+  // The Rust template needs a Rust toolchain to build; without one it would only fail.
+  const rust = $("#new-form input[value=template-rust]");
+  if (rust) {
+    rust.disabled = !rt.rust;
+    rust.closest("label").title = rt.rust ? "" : rt.rust_note || "This server has no Rust toolchain";
+  }
   const sb = rt.sandbox || {};
   $("#rt-sandbox").textContent =
     sb.mechanism === "landlock"
@@ -1066,7 +1074,12 @@ function openNew(template) {
 $("#new-app").onclick = () => openNew(false);
 $("#empty-template").onclick = () => openNew(true);
 $("#new-form").addEventListener("change", (e) => {
-  if (e.target.name === "source") $("#archive-label").hidden = e.target.value !== "archive";
+  if (e.target.name === "source") {
+    $("#archive-label").hidden = e.target.value !== "archive";
+    // A name still the template's follows the choice of template.
+    const name = e.currentTarget.elements.name;
+    if (/^Notes( \(Rust\))?$/.test(name.value)) name.value = e.target.value === "template-rust" ? "Notes (Rust)" : "Notes";
+  }
   if (e.target.id === "archive") $("#archive-name").textContent = e.target.files[0] ? e.target.files[0].name : "";
 });
 $("#new-form").onsubmit = async (e) => {
@@ -1088,9 +1101,16 @@ $("#new-form").onsubmit = async (e) => {
       const q = new URLSearchParams({ name: f.get("name"), description: f.get("description"), icon: f.get("icon"), note: "Uploaded " + file.name });
       res = await api(`/api/apps?${q}`, { method: "POST", body: file, headers: { "Content-Type": type } });
     } else {
+      const rust = f.get("source") === "template-rust";
       res = await api("/api/apps", {
         method: "POST",
-        body: JSON.stringify({ name: f.get("name"), description: f.get("description") || "A React frontend talking to a Go backend.", icon: f.get("icon") || "notes", template: "notes", note: "Started from the notes template" }),
+        body: JSON.stringify({
+          name: f.get("name"),
+          description: f.get("description") || `A React frontend talking to a ${rust ? "Rust" : "Go"} backend.`,
+          icon: f.get("icon") || "notes",
+          template: rust ? "notes-rust" : "notes",
+          note: `Started from the ${rust ? "notes-rust" : "notes"} template`,
+        }),
       });
     }
     $("#new-dialog").close();
