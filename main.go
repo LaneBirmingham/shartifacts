@@ -87,7 +87,7 @@ func main() {
 		}
 		app.Runtime = &runner.Remote{URL: u, Token: token}
 	} else {
-		local = &runner.Local{Dir: st.AppsDir(), GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota)}
+		local = &runner.Local{Dir: st.AppsDir(), GoBinary: cfg.GoBinary, CargoBinary: cfg.CargoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota)}
 		app.Runtime = local
 	}
 	go func() {
@@ -101,10 +101,11 @@ func main() {
 		switch {
 		case info.Error != "":
 			log.Printf("apps: %s", info.Error)
-		case info.Go == "":
-			log.Printf("apps: backends run %s; no Go toolchain, so only prebuilt backends deploy; sandbox: %s", map[bool]string{true: "in the runner", false: "here"}[info.Remote], info.Sandbox.Detail)
 		default:
-			log.Printf("apps: backends run %s with %s; sandbox: %s", map[bool]string{true: "in the runner", false: "here"}[info.Remote], info.Go, info.Sandbox.Detail)
+			log.Printf("apps: backends run %s with %s; sandbox: %s", map[bool]string{true: "in the runner", false: "here"}[info.Remote], info.Toolchains(), info.Sandbox.Detail)
+			if info.RustNote != "" {
+				log.Printf("apps: %s", info.RustNote)
+			}
 		}
 	}()
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
@@ -158,13 +159,12 @@ func runRunner(cfg *config.Config) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		log.Fatal(err)
 	}
-	l := &runner.Local{Dir: dir, GoBinary: cfg.GoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota), Remote: true}
+	l := &runner.Local{Dir: dir, GoBinary: cfg.GoBinary, CargoBinary: cfg.CargoBinary, MaxProcs: cfg.AppProcs, Idle: cfg.AppIdle, DataQuota: int64(cfg.AppDataQuota), Remote: true}
 	info := l.Info(context.Background())
-	goVersion := info.Go
-	if goVersion == "" {
-		goVersion = "no Go toolchain (only prebuilt backends deploy)"
+	log.Printf("app runner on %s for %s; %s; sandbox: %s", addr, dir, info.Toolchains(), info.Sandbox.Detail)
+	if info.RustNote != "" {
+		log.Printf("apps: %s", info.RustNote)
 	}
-	log.Printf("app runner on %s for %s; %s; sandbox: %s", addr, dir, goVersion, info.Sandbox.Detail)
 	srv := &http.Server{Addr: addr, Handler: runner.Handler(l), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"embed"
@@ -24,22 +25,38 @@ import (
 //go:embed apptemplates
 var appTemplates embed.FS
 
-// templateFiles returns a built-in example app's source tree.
+// templateFiles returns a built-in example app's source tree. notes-rust is notes with its
+// Go backend swapped for a Rust one: the same page, API and data file.
 func templateFiles(name string) (map[string][]byte, error) {
-	if name != "notes" {
-		return nil, fmt.Errorf("unknown template %q; available: notes", name)
-	}
-	root := "apptemplates/" + name
-	files := map[string][]byte{"go.mod": []byte("module notes\n\ngo 1.25\n")}
-	err := fs.WalkDir(appTemplates, root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	files := map[string][]byte{}
+	add := func(root string, skip func(rel string) bool) error {
+		return fs.WalkDir(appTemplates, root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel := strings.TrimPrefix(p, root+"/")
+			if skip != nil && skip(rel) {
+				return nil
+			}
+			b, err := appTemplates.ReadFile(p)
+			files[rel] = b
 			return err
+		})
+	}
+	switch name {
+	case "notes":
+		files["go.mod"] = []byte("module notes\n\ngo 1.25\n")
+		return files, add("apptemplates/notes", nil)
+	case "notes-rust":
+		err := add("apptemplates/notes", func(rel string) bool { return strings.HasPrefix(rel, "server/") })
+		if err == nil {
+			err = add("apptemplates/notes-rust", nil)
 		}
-		b, err := appTemplates.ReadFile(p)
-		files[strings.TrimPrefix(p, root+"/")] = b
-		return err
-	})
-	return files, err
+		// The page is the Go template's but for the line that names its backend.
+		files["src/App.tsx"] = bytes.Replace(files["src/App.tsx"], []byte("Go behind"), []byte("Rust behind"), 1)
+		return files, err
+	}
+	return nil, fmt.Errorf("unknown template %q; available: notes (React + Go), notes-rust (React + Rust)", name)
 }
 
 // appGuide is the build contract get_app returns with guide:true, with this server's facts filled in.
@@ -49,8 +66,20 @@ func (s *Server) appGuide(ctx context.Context, base string) string {
 	if info.Go != "" {
 		goLine = "built here with " + info.Go + " for " + info.OS + "/" + info.Arch + ", CGO disabled"
 	}
+	rustLine := "NOT AVAILABLE on this server (" + map[bool]string{true: "the runner sidecar has no Rust toolchain", false: "no Rust toolchain and no runner sidecar; see the README"}[info.Remote] + "); build it yourself and deploy the binary as server/app (below)"
+	if info.RustNote != "" {
+		rustLine = "NOT AVAILABLE on this server (" + info.RustNote + "); build it yourself and deploy the binary as server/app (below)"
+	}
+	if info.Rust != "" {
+		rustLine = "built here with Rust " + info.Rust + " (cargo build --release --frozen --target " + info.RustTarget + ", after cargo fetch --locked) into a static binary"
+	}
 	if info.Error != "" {
 		goLine = "UNKNOWN: the app runner is unreachable (" + info.Error + ")"
+		rustLine = goLine
+	}
+	rustConfine := "Build scripts and procedural macros run confined like backends: they read the source, the toolchain and the compiler's system files, write only the app's own build cache, and cannot reach other apps."
+	if info.Sandbox.Mechanism != "landlock" {
+		rustConfine = "Build scripts and procedural macros run UNCONFINED on this server (no usable Landlock), as the runner's user: build only crates you trust."
 	}
 	where := "beside shartifacts"
 	if info.Remote {
@@ -73,8 +102,8 @@ func (s *Server) appGuide(ctx context.Context, base string) string {
 		share += " Each app also has a private address, " + s.PrivateAppOrigin + "/ with the same label (get_app private_url), for the workspace's people only: it is where an app installs on a phone as an app of its own, with real browser storage. Point people at open_url, which signs them in there."
 	}
 	keep := s.Store.KeepVersionsOrDefault()
-	retention := fmt.Sprintf("Rollback reaches the newest %d versions that built (get_app's oldest_rollback), plus the live version and versions links pin; older versions lose their files. Deploys share unchanged files with the version before, and a Go backend whose files did not change reuses its build, so versions are cheap.", keep)
-	return strings.NewReplacer("{BASE}", base, "{RETENTION}", retention, "{GO}", goLine, "{OS}", info.OS, "{ARCH}", info.Arch, "{RUST}", rustTargetFor(info.OS, info.Arch),
+	retention := fmt.Sprintf("Rollback reaches the newest %d versions that built (get_app's oldest_rollback), plus the live version and versions links pin; older versions lose their files. Deploys share unchanged files with the version before, and a Go or Rust backend whose files did not change reuses its build, so versions are cheap.", keep)
+	return strings.NewReplacer("{BASE}", base, "{RETENTION}", retention, "{GO}", goLine, "{RUSTBUILD}", rustLine, "{RUSTCONFINE}", rustConfine, "{OS}", info.OS, "{ARCH}", info.Arch, "{RUST}", rustTargetFor(info.OS, info.Arch),
 		"{WHERE}", where, "{SANDBOX}", info.Sandbox.Detail, "{NETWORK}", network, "{LIBS}", LibraryNames(), "{SHARE}", share, "{STORAGE}", storage).Replace(appGuideText)
 }
 
@@ -90,9 +119,10 @@ const appGuideText = `shartifacts apps: full-stack micro frontends. Each app ope
 
 STACK (fixed)
 Frontend: static files served from the app's web root. A page may load a TypeScript/JSX entry Vite-style, <script type="module" src="/src/main.tsx"></script>: on deploy shartifacts bundles it with esbuild (React 19 with the automatic JSX runtime, CSS imports, relative imports, @/ for src/, small images inlined) against the vendored libraries: {LIBS}. Tailwind classes work. For any other npm package, build locally (vite build --base=./) and deploy the output with "frontend": {"root": "dist"}.
-Backend (optional): a native HTTP server process.
-- Go (recommended): package main in server/ (server/main.go), {GO}. Include go.mod and go.sum; modules download during the build (stdlib-only apps need no network), or vendor them (vendor/).
-- Rust or anything else: a prebuilt static executable for {OS}/{ARCH} at server/app (Rust: cargo build --release --target {RUST}; Go elsewhere: CGO_ENABLED=0 GOOS={OS} GOARCH={ARCH}). Upload it in an archive (below) or as binary_files.
+Backend (optional): a native HTTP server process, Go or Rust. Go suits most apps and builds in seconds. Choose Rust when the backend must be as fast or as lean as it can be: CPU-heavy work (parsing, image or audio processing, search, simulation), steady latency with no garbage-collection pauses, a few MB of memory.
+- Go: package main in server/ (server/main.go), {GO}. Include go.mod and go.sum; modules download during the build (stdlib-only apps need no network), or vendor them (vendor/).
+- Rust: a crate in server/ (server/Cargo.toml, server/src/main.rs), {RUSTBUILD}. Use Axum on Tokio (the notes-rust template) unless the app needs otherwise. Include Cargo.lock (cargo generate-lockfile) so the build uses the crates you tested; crates download during the build, or vendor them (cargo vendor, with the .cargo/config.toml it prints). The first build compiles every dependency in release mode and can take a few minutes, so deploy_app may answer status "building": poll get_app until the version is ready or failed. Later builds reuse the compiled crates, and a version whose crate did not change reuses its binary. Prefer pure-Rust crates: rustls for TLS (reqwest with rustls, never native-tls or OpenSSL), rusqlite with its bundled feature for SQLite. A crate with several binaries names one in shartifacts.json: "backend": {"rust": "./server", "bin": "NAME"}. {RUSTCONFINE}
+- Anything else: a prebuilt static executable for {OS}/{ARCH} at server/app (Go built elsewhere: CGO_ENABLED=0 GOOS={OS} GOARCH={ARCH}; Rust built elsewhere: cargo build --release --target {RUST}). Upload it in an archive (below) or as binary_files. A server/app beside a server/Cargo.toml wins: remove it to have the crate built.
 Backend contract:
 - Listen on 127.0.0.1:$PORT (env HOST and PORT). Serve routes under /api/: shartifacts strips the app's base, so a page's fetch("api/notes") arrives as /api/notes.
 - Keep data in $DATA_DIR: it persists across versions and every version shares it (a new version's code meets the old data, so migrate forward). Nothing else is writable. Versions can run at the same time (the live one, a preview, the one just replaced, which stops shortly after), so read data from disk per request rather than caching it in memory, and lock writes (SQLite, or a file lock).
@@ -106,9 +136,10 @@ LAYOUT
 index.html              frontend entry (the web root is the tree, or frontend.root)
 src/main.tsx, src/*.tsx bundled when a page loads them
 public/                 served at the root, like Vite's public folder
-server/main.go          Go backend; never served, nor are go.mod, go.sum, vendor/, *.go, *.rs, Cargo.*, shartifacts.json
-go.mod, go.sum
-shartifacts.json        optional: {"frontend": {"root": "dist", "spa": true}, "backend": {"go": "./server" | "binary": "server/app", "network": false}}
+server/main.go          Go backend, with go.mod and go.sum at the root
+server/Cargo.toml       or a Rust backend: its crate (server/src/main.rs, server/Cargo.lock)
+                        Backend files are never served: server/, vendor/, target/, .cargo/, go.mod, go.sum, *.go, *.rs, Cargo.*, shartifacts.json
+shartifacts.json        optional: {"frontend": {"root": "dist", "spa": true}, "backend": {"go": "./server" | "rust": "./server", "bin": "NAME" | "binary": "server/app", "network": false}}
 A backend-only app (no index.html) is fine; so is a frontend-only one.
 
 FRONTEND RULES (pages run sandboxed: on the network with an opaque origin, like artifacts)
@@ -121,7 +152,7 @@ FRONTEND RULES (pages run sandboxed: on the network with an opaque origin, like 
 - Smooth on 120 Hz screens: give every element that scrolls (overflow auto or scroll) an opaque background, the colour behind it; one the browser can see through is re-rastered on each frame it scrolls where text is drawn for LCD screens (Chrome on Windows and Linux). Leave motion to the browser: scrolling, CSS scroll-snap for swiped screens, position: sticky, and CSS transitions, animations and scroll-driven animations (animation-timeline) of transform and opacity keep the screen's rate. Script doesn't: Chrome on Android runs requestAnimationFrame, scroll events and the rest of a page's script at 60 Hz on a 120 Hz screen once the finger lifts (a fling included), and in a hub tab Safari halves requestAnimationFrame until the person taps the app, so anything a script moves during a scroll (a progress bar fed by scroll events, a pinned header) lags it. Keep scroll listeners passive and off state that re-renders on every event.
 
 DEPLOYING
-- deploy_app without an id creates the app from name and files (or template: "notes", a working React + Go app to start from); deploy_app with the id ships every change. A deploy builds the version, starts its backend once, and makes it live; promote:false stages it for preview instead. A failed build never goes live: read error and log in the result, or get_app with logs:true. manage_app op promote rolls back or forward to any ready version.
+- deploy_app without an id creates the app from name and files (or a template to start from: "notes", a working React + Go app, or "notes-rust", the same app with a Rust backend); deploy_app with the id ships every change. A deploy builds the version, starts its backend once, and makes it live; promote:false stages it for preview instead. A failed build never goes live: read error and log in the result, or get_app with logs:true. manage_app op promote rolls back or forward to any ready version.
 - deploy_app with an id: files are text by path, binary_files base64 (keep them small). merge:true starts from the latest version so you send only what changed: files to add or replace, remove for paths to delete, edits ({file, old_str, new_str}) for small changes. Always pass base_version (the latest version, from get_app).
 - Shell agents can upload a zip or tar.gz of the project (one top-level folder is unwrapped):
   curl --fail-with-body -H 'Content-Type: application/zip' --data-binary @app.zip '{BASE}/api/apps/ID/deployments?note=what+changed'
@@ -168,7 +199,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Tail    int      `json:"tail,omitempty" jsonschema:"With logs: most recent lines (default 200)"`
 		All     bool     `json:"all_versions,omitempty" jsonschema:"List every version; by default the newest 10, plus the live one and versions links pin"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: the newest versions (status, notes, errors), live version, how far back rollback reaches, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go, Rust or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: the newest versions (status, notes, errors), live version, how far back rollback reaches, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
 		if in.ID == "" {
 			if in.Guide {
 				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s.appGuide(ctx, base)}}}, nil, nil
@@ -228,7 +259,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Description string            `json:"description,omitempty"`
 		Icon        string            `json:"icon,omitempty" jsonschema:"Creating: one short generic word (chart, list, money, calendar, game, tool) or an emoji"`
 		Label       string            `json:"label,omitempty" jsonschema:"Creating: the subdomain of its public links and private address when apps get hostnames of their own (get_app guide), e.g. budget; lowercase letters, digits and hyphens; default a generated one"`
-		Template    string            `json:"template,omitempty" jsonschema:"Creating: notes starts from a working React + Go app (files you send replace its files)"`
+		Template    string            `json:"template,omitempty" jsonschema:"Creating: notes starts from a working React + Go app, notes-rust from the same app with a Rust backend (files you send replace its files)"`
 		BaseVersion int               `json:"base_version,omitempty" jsonschema:"Deploying: the latest version (get_app's latest); a stale one is refused"`
 		Merge       bool              `json:"merge,omitempty" jsonschema:"Deploying: start from the latest version and apply files, remove and edits; otherwise the version is exactly files"`
 		Files       map[string]string `json:"files,omitempty"`

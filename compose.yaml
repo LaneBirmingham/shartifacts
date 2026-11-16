@@ -57,7 +57,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Builds and runs app backends (Go built from source, or prebuilt binaries). It mounts only
+  # Builds and runs app backends (Go and Rust built from source, or prebuilt binaries). It mounts only
   # the apps directory, so app code never sees artifacts, media or the rest of /data, and its
   # limits keep a runaway app from taking shartifacts down with it. Not published: shartifacts
   # reaches it over the compose network with a token both read from the apps directory.
@@ -75,6 +75,8 @@ services:
       SHARTIFACTS_APP_DATA_QUOTA: ${SHARTIFACTS_APP_DATA_QUOTA:-}
       # Where Go modules come from at build time; "off" builds stdlib/vendored apps only.
       GOPROXY: ${SHARTIFACTS_GOPROXY:-https://proxy.golang.org,direct}
+      # "true" builds Rust apps only from vendored crates (or ones already in the cache).
+      CARGO_NET_OFFLINE: ${SHARTIFACTS_CARGO_OFFLINE:-false}
       TZ: ${TZ:-UTC}
     # Starts once shartifacts has created the apps directory as UID 10001.
     depends_on:

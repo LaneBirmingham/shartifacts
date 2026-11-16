@@ -47,12 +47,13 @@ A new password signs every browser out but keeps agent tokens, and `set-password
 
 | Variable | Flag | Default | |
 | --- | --- | --- | --- |
-| `SHARTIFACTS_RUNNER_URL` | `-runner-url` | `http://runner:8090` in Compose | Where app backends are built and run. Empty runs them inside the shartifacts process, which then needs `go` on its `PATH` to build Go backends. |
+| `SHARTIFACTS_RUNNER_URL` | `-runner-url` | `http://runner:8090` in Compose | Where app backends are built and run. Empty runs them inside the shartifacts process, which then needs `go` on its `PATH` to build Go backends and `cargo` for Rust ones. |
 | `SHARTIFACTS_APP_PROCS` | `-app-procs` | `16` | The most app backends running at once. The least recently used one stops to make room. |
 | `SHARTIFACTS_APP_IDLE` | `-app-idle` | `15m` | How long an app backend may go without requests before it stops. |
 | `SHARTIFACTS_APP_KEEP_VERSIONS` | `-app-keep-versions` | `20` | How many of each app's newest versions that built keep their files, which is how far rollback reaches. The live version and versions that share links pin keep theirs too. Older versions stay in the history without files. Failed builds don't count toward it. See [apps.md](apps.md#versions-and-disk). |
 | `SHARTIFACTS_APP_DATA_QUOTA` | `-app-data-quota` | no limit | The most disk each app's backend data (`DATA_DIR`) may take, such as `2GiB` or `500MB`. The runner checks it every two minutes and when a backend starts. A backend over the quota is stopped and doesn't start again until its data shrinks or the quota grows. With Compose it's a runner setting. Backends see it as `DATA_QUOTA` (in bytes). |
 | `SHARTIFACTS_GO` | `-go` | `go` | The Go toolchain that builds Go backends. |
+| `SHARTIFACTS_CARGO` | `-cargo` | `cargo` | The Rust toolchain's `cargo` that builds Rust backends, with the `rustc` beside it. On Linux it needs the musl target for the machine's architecture. Cargo's own `CARGO_NET_*`, `CARGO_HTTP_*`, `CARGO_REGISTRIES_*`, `CARGO_REGISTRY_*` and `CARGO_BUILD_JOBS` variables, and the proxy ones, pass through to builds; variables naming a token, credential or password reach only the fetch and lockfile steps, not the build. Without `CARGO_BUILD_JOBS` a build compiles about one crate per 512 MiB of the memory limit. |
 | `SHARTIFACTS_RUNNER` | `-runner` | `false` | Run as the runner sidecar. The runner image sets this. |
 | `SHARTIFACTS_RUNNER_LISTEN` | `-runner-listen` | `:8090` | The runner's API address. Never publish it. |
 | `SHARTIFACTS_APPS_DIR` | `-apps-dir` | `./data/apps` | The runner's view of the apps folder. |
@@ -69,8 +70,9 @@ These are read by `compose.yaml` and the files in `deploy/`, not by shartifacts 
 | `SHARTIFACTS_SHARE_BIND` | `127.0.0.1` | The host address the public listener is published on, for a reverse proxy of your own. The bundled edges do not need it. It serves only share and app links, so publishing it on your network is safe. |
 | `SHARTIFACTS_SHARE_PORT` | `8081` | The public listener's host port. |
 | `SHARTIFACTS_DATA` | `./data` | The host folder for data. It must be writable by UID/GID 10001. |
-| `SHARTIFACTS_RUNNER_MEMORY` | `2g` | The runner container's memory limit. |
+| `SHARTIFACTS_RUNNER_MEMORY` | `2g` | The runner container's memory limit. Backends and builds share it. Rust builds run one at a time and compile about one crate per 512 MiB of this limit at once; a larger limit builds a big crate graph faster. |
 | `SHARTIFACTS_GOPROXY` | `https://proxy.golang.org,direct` | Where Go modules come from when backends build. `off` builds only apps that use the standard library or vendor their modules. |
+| `SHARTIFACTS_CARGO_OFFLINE` | `false` | `true` keeps Rust builds from downloading crates, so only apps that vendor theirs (or use only crates already in the runner's cache) build. |
 | `COMPOSE_FILE` | `compose.yaml` | Adds an edge for public sharing: `compose.yaml:deploy/caddy/compose.yaml` or `compose.yaml:deploy/cloudflare-tunnel/compose.yaml`. |
 | `CLOUDFLARE_TUNNEL_TOKEN` | | The token of the Cloudflare tunnel, for the Cloudflare edge. |
 | `TZ` | `UTC` | The time zone for logs. |

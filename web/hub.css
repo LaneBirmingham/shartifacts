@@ -965,6 +965,10 @@ dialog label > input:not([type="radio"]):not([type="checkbox"]) {
 .file-label input {
   display: none;
 }
+/* Its display above is !important too, and would otherwise outrank [hidden]. */
+.file-label[hidden] {
+  display: none !important;
+}
 .file-name {
   font-size: 13px;
   margin: 4px 0 0;

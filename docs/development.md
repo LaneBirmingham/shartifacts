@@ -61,6 +61,8 @@ tower ssh 'cd /mnt/user/projects/shartifacts && docker build -f deploy/ci/Docker
 
 The rest of the runner's settings — one job at a time, workspaces on the cache pool, a half-hour job timeout — are in `/mnt/user/appdata/gitea-runner-ci/data/config.yaml`, which the stack reads with `CONFIG_FILE`. Job workspaces live under `/mnt/cache/appdata/shartifacts-ci/work`.
 
+Tests that build a Rust backend need `cargo` on the `PATH` (on Linux, with its musl target) and skip without it; they build standard-library crates, so they need no network. The CI image carries the runner's Rust toolchain for them.
+
 Tests that deploy apps build a Go backend, and each one opens a store in a fresh temporary directory, so the build cache would be cold for every backend. `internal/server/backend_cache_test.go` gives them one shared cache for the whole test binary instead, which is most of the difference between the suite taking a few minutes and half a minute.
 
 ## Releasing

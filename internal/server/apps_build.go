@@ -33,7 +33,11 @@ type appManifest struct {
 	Backend struct {
 		// Go is the package to build ("./server" by default when server/ holds Go files).
 		Go string `json:"go,omitempty"`
-		// Binary is a prebuilt executable (Rust, or Go built elsewhere).
+		// Rust is the directory of the crate to build ("./server" by default when
+		// server/Cargo.toml exists); Bin names its binary when it has several.
+		Rust string `json:"rust,omitempty"`
+		Bin  string `json:"bin,omitempty"`
+		// Binary is a prebuilt executable (built elsewhere, for this server's system).
 		Binary string `json:"binary,omitempty"`
 		// Network lets the backend open outbound connections.
 		Network bool `json:"network,omitempty"`
@@ -46,8 +50,8 @@ type appSite struct {
 	SPA      bool   `json:"spa"`
 	Frontend bool   `json:"frontend"`
 	Binary   string `json:"binary,omitempty"`
-	// Backend is the Go backend's package directory when it is not server/, which is
-	// backend material as server/ is.
+	// Backend is the Go package's or Rust crate's directory when it is not server/, which
+	// is backend material as server/ is.
 	Backend string `json:"backend,omitempty"`
 }
 
@@ -65,7 +69,7 @@ func readManifest(src string) (appManifest, error) {
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
 	if err = d.Decode(&m); err != nil {
-		return m, fmt.Errorf("%s: %v (fields: frontend.root, frontend.spa, backend.go, backend.binary, backend.network)", manifestName, err)
+		return m, fmt.Errorf("%s: %v (fields: frontend.root, frontend.spa, backend.go, backend.rust, backend.bin, backend.binary, backend.network)", manifestName, err)
 	}
 	if m.Frontend.Root != "" {
 		root := strings.Trim(path.Clean(m.Frontend.Root), "/")
@@ -77,8 +81,19 @@ func readManifest(src string) (appManifest, error) {
 		}
 		m.Frontend.Root = root
 	}
-	if m.Backend.Go != "" && m.Backend.Binary != "" {
-		return m, fmt.Errorf("%s: set backend.go or backend.binary, not both", manifestName)
+	if set := len(slices.DeleteFunc([]string{m.Backend.Go, m.Backend.Rust, m.Backend.Binary}, func(s string) bool { return s == "" })); set > 1 {
+		return m, fmt.Errorf("%s: set one of backend.go, backend.rust and backend.binary", manifestName)
+	}
+	if r := m.Backend.Rust; r != "" {
+		if clean := path.Clean(r); (r != "." && !strings.HasPrefix(r, "./")) || (clean != "." && store.ValidAppPath(clean) != nil) {
+			return m, fmt.Errorf("%s: backend.rust must be the crate's directory inside the app, like ./server", manifestName)
+		}
+	}
+	if m.Backend.Bin != "" && m.Backend.Rust == "" {
+		return m, fmt.Errorf("%s: backend.bin names a binary of the crate backend.rust builds; set backend.rust too", manifestName)
+	}
+	if m.Backend.Bin != "" && !rustBinName.MatchString(m.Backend.Bin) {
+		return m, fmt.Errorf("%s: backend.bin must be a binary target's name, like api", manifestName)
 	}
 	if m.Backend.Binary != "" && store.ValidAppPath(m.Backend.Binary) != nil {
 		return m, fmt.Errorf("%s: backend.binary must be a path inside the app, like server/app", manifestName)
@@ -96,6 +111,8 @@ func serverOnly(p string, site appSite) bool {
 	case top == "server" || top == "vendor" || top == "target":
 		return true
 	case p == "go.mod" || p == "go.sum" || p == "go.work" || p == "go.work.sum" || p == manifestName || p == "Cargo.toml" || p == "Cargo.lock":
+		return true
+	case top == ".cargo" || p == "rust-toolchain" || p == "rust-toolchain.toml":
 		return true
 	case strings.HasSuffix(p, ".go") || strings.HasSuffix(p, ".rs"):
 		return true
@@ -125,7 +142,7 @@ func (s *Server) buildDeployment(ctx context.Context, id string, d store.Deploym
 	if err != nil {
 		return fail(err.Error())
 	}
-	site := appSite{Root: m.Frontend.Root, SPA: m.Frontend.SPA == nil || *m.Frontend.SPA, Binary: m.Backend.Binary, Backend: m.Backend.Go}
+	site := appSite{Root: m.Frontend.Root, SPA: m.Frontend.SPA == nil || *m.Frontend.SPA, Binary: m.Backend.Binary, Backend: m.Backend.Go + m.Backend.Rust}
 	rootDir := filepath.Join(src, filepath.FromSlash(site.Root))
 	if info, err := os.Stat(filepath.Join(rootDir, "index.html")); err == nil && !info.IsDir() {
 		site.Frontend = true
@@ -145,21 +162,23 @@ func (s *Server) buildDeployment(ctx context.Context, id string, d store.Deploym
 			log.WriteString("frontend: static files, served as deployed\n")
 		}
 	}
-	req := runner.BuildRequest{App: id, Version: d.Version}
-	switch {
-	case m.Backend.Binary != "":
-		req.Kind, req.Binary = "binary", m.Backend.Binary
-	case m.Backend.Go != "":
-		req.Kind, req.Package = "go", m.Backend.Go
-	default:
-		if goFiles, _ := filepath.Glob(filepath.Join(src, "server", "*.go")); len(goFiles) > 0 {
-			req.Kind, req.Package = "go", "./server"
-		} else if info, err := os.Stat(filepath.Join(src, "server", "app")); err == nil && !info.IsDir() {
-			req.Kind, req.Binary = "binary", "server/app"
+	req, warnings := backendBuild(src, m)
+	if req.Kind == "rust" && m.Backend.Rust == "" && site.Frontend {
+		// Before shartifacts built Rust, a frontend with a crate beside it deployed as a
+		// frontend; on a server that cannot build the crate it still does.
+		if info := s.Runtime.Info(ctx); info.Error == "" && info.Rust == "" {
+			reason := info.RustNote
+			if reason == "" {
+				reason = "it has no Rust toolchain"
+			}
+			warnings = append(warnings, "server/Cargo.toml was not built, so the app has no backend: this server cannot build Rust ("+reason+"). Set \"backend\": {\"rust\": \"./server\"} in shartifacts.json to make a failed Rust build fail the deploy")
+			req = runner.BuildRequest{}
 		}
 	}
+	req.App, req.Version = id, d.Version
+	d.Warnings = append(d.Warnings, warnings...)
 	if !site.Frontend && req.Kind == "" {
-		return fail("nothing to serve: add index.html for a frontend and/or server/main.go (Go) or server/app (prebuilt binary) for a backend; get_app with guide:true explains the layout")
+		return fail("nothing to serve: add index.html for a frontend and/or server/main.go (Go), server/Cargo.toml (Rust) or server/app (prebuilt binary) for a backend; get_app with guide:true explains the layout")
 	}
 	siteJSON, _ := json.Marshal(site)
 	rt, _ := json.Marshal(runner.RuntimeConfig{Network: m.Backend.Network})
@@ -189,12 +208,46 @@ func (s *Server) buildDeployment(ctx context.Context, id string, d store.Deploym
 	return d
 }
 
+// backendBuild says how a version's backend is made: what shartifacts.json names, or else
+// by the layout, server/*.go (Go), server/app (prebuilt) or server/Cargo.toml (Rust). Kind
+// is empty for a frontend-only app.
+func backendBuild(src string, m appManifest) (req runner.BuildRequest, warnings []string) {
+	switch {
+	case m.Backend.Binary != "":
+		req.Kind, req.Binary = "binary", m.Backend.Binary
+	case m.Backend.Go != "":
+		req.Kind, req.Package = "go", m.Backend.Go
+	case m.Backend.Rust != "":
+		req.Kind, req.Package, req.Bin = "rust", m.Backend.Rust, m.Backend.Bin
+	default:
+		goFiles, _ := filepath.Glob(filepath.Join(src, "server", "*.go"))
+		cargo, _ := os.Stat(filepath.Join(src, "server", "Cargo.toml"))
+		binary, _ := os.Stat(filepath.Join(src, "server", "app"))
+		switch {
+		case len(goFiles) > 0:
+			req.Kind, req.Package = "go", "./server"
+		case binary != nil && !binary.IsDir():
+			// A prebuilt binary wins over the crate beside it, as it did before shartifacts
+			// built Rust: apps that ship both keep running what they built.
+			req.Kind, req.Binary = "binary", "server/app"
+			if cargo != nil {
+				warnings = append(warnings, "server/app is a prebuilt binary, so server/Cargo.toml was not built; remove server/app to have shartifacts build the crate")
+			}
+		case cargo != nil && !cargo.IsDir():
+			req.Kind, req.Package = "rust", "./server"
+		}
+	}
+	return req, warnings
+}
+
 // moduleScript finds script tags whose src may be a page entry to bundle.
 var (
 	appScriptTag = regexp.MustCompile(`(?is)<script\b([^>]*)>\s*</script>`)
 	srcAttr      = regexp.MustCompile(`(?i)\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 	moduleAttr   = regexp.MustCompile(`(?i)\btype\s*=\s*["']?module\b`)
 	headClose    = regexp.MustCompile(`(?i)</head\s*>`)
+	// rustBinName is what backend.bin may be: a Cargo binary target's name.
+	rustBinName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$`)
 )
 
 // buildFrontend bundles the TypeScript/JSX entries pages load (a Vite-style

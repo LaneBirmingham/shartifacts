@@ -26,12 +26,22 @@ COPY --from=frontend /src/web/vendor ./web/vendor
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -trimpath -o /shartifacts .
 
-# The app runner sidecar: the same binary, with the Go toolchain that builds app backends.
-# It runs them with only the apps directory mounted (compose.yaml), never the artifacts.
+# The Rust toolchain for the runner: the official image's, moved out of rustup's layout so
+# the runner runs its cargo and rustc directly. Its host target is musl, whose binaries are
+# static, which is what backends need to start in their sandbox.
+FROM rust:1.100-alpine3.24 AS rust
+RUN cp -a "$(rustc --print sysroot)" /opt/rust
+
+# The app runner sidecar: the same binary, with the Go and Rust toolchains that build app
+# backends. It runs them with only the apps directory mounted (compose.yaml), never the
+# artifacts. gcc and musl-dev are Rust's linker and the C library it links into each
+# binary; they also compile the C inside crates such as rusqlite's bundled SQLite.
 FROM golang:1.26-alpine AS runner
-RUN addgroup -g 10001 app && adduser -D -u 10001 -G app app && mkdir /apps && chown app:app /apps
+RUN apk add --no-cache gcc musl-dev \
+    && addgroup -g 10001 app && adduser -D -u 10001 -G app app && mkdir /apps && chown app:app /apps
+COPY --from=rust /opt/rust /usr/local/rust
 COPY --from=backend /shartifacts /usr/local/bin/shartifacts
-ENV GOTOOLCHAIN=local CGO_ENABLED=0 SHARTIFACTS_RUNNER_LISTEN=:8090 SHARTIFACTS_APPS_DIR=/apps
+ENV PATH=/usr/local/rust/bin:$PATH GOTOOLCHAIN=local CGO_ENABLED=0 SHARTIFACTS_RUNNER_LISTEN=:8090 SHARTIFACTS_APPS_DIR=/apps
 USER app
 EXPOSE 8090
 VOLUME /apps

@@ -20,11 +20,16 @@ import (
 	"time"
 )
 
-// BuildTimeout bounds one backend build, module downloads included.
-const BuildTimeout = 5 * time.Minute
+// GoBuildTimeout bounds one Go backend build, module downloads included.
+const GoBuildTimeout = 5 * time.Minute
 
-// cacheDir is where backend builds keep the Go toolchain's build and module caches: one
-// cache, wherever the caller put it, so the standard library is compiled once.
+// BuildTimeout is the longest any backend build may take, which is what callers waiting on
+// one allow for.
+const BuildTimeout = max(GoBuildTimeout, RustBuildTimeout)
+
+// cacheDir is where backend builds keep the toolchains' caches: Go's build and module caches,
+// Cargo's registry and each app's compiled crates. One cache, wherever the caller put it, so
+// the standard library and shared crates are compiled and downloaded once.
 func (l *Local) cacheDir() string {
 	if l.CacheDir != "" {
 		return l.CacheDir
@@ -45,6 +50,8 @@ func (l *Local) Build(ctx context.Context, req BuildRequest) BuildResult {
 	switch req.Kind {
 	case "go":
 		return l.buildGo(ctx, req, src, out)
+	case "rust":
+		return l.buildRust(ctx, req, src, out)
 	case "binary":
 		return installBinary(src, req.Binary, filepath.Join(out, "server"), l.previousServer(req))
 	}
@@ -102,7 +109,7 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	// out/server may be a hard link another version shares; the build must replace it, not
 	// write through it.
 	os.Remove(filepath.Join(out, "server"))
-	ctx, cancel := context.WithTimeout(ctx, BuildTimeout)
+	ctx, cancel := context.WithTimeout(ctx, GoBuildTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, l.goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(out, "server"), pkg)
 	cmd.Dir = src
@@ -124,7 +131,7 @@ func (l *Local) buildGo(ctx context.Context, req BuildRequest, src, out string) 
 	res.Log = fmt.Sprintf("$ go build %s %s  (%s, %s/%s)\n%s", mod, pkg, l.goVer, runtime.GOOS, runtime.GOARCH, buf.String())
 	switch {
 	case ctx.Err() == context.DeadlineExceeded:
-		res.Error = fmt.Sprintf("the Go build took longer than %s", BuildTimeout)
+		res.Error = fmt.Sprintf("the Go build took longer than %s", GoBuildTimeout)
 	case err != nil:
 		res.Error = "go build failed: " + firstLines(buf.String(), 12)
 	default:

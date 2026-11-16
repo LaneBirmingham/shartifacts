@@ -107,7 +107,7 @@ type Deployment struct {
 	Files      int        `json:"files"`
 	Bytes      int64      `json:"bytes"`
 	// Frontend is whether the version serves pages; Backend is how its server was made:
-	// "go" (built from source here), "binary" (deployed prebuilt) or "" (none).
+	// "go" or "rust" (built from source here), "binary" (deployed prebuilt) or "" (none).
 	Frontend bool   `json:"frontend"`
 	Backend  string `json:"backend,omitempty"`
 	// Network is whether the backend may open outbound connections.
