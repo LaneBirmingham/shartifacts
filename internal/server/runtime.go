@@ -7,7 +7,12 @@ const previewSandbox = "allow-scripts allow-forms allow-modals allow-downloads a
 
 // previewRuntime runs before artifact code in every preview:
 //   - shows uncaught errors in the page and reports them, with failed loads and CSP
-//     blocks, to the embedding page, which records them for agents (get_artifact);
+//     blocks, to the embedding page, which records them for agents (get_artifact). Errors
+//     raised by browser extensions' injected scripts (wallets such as MetaMask inject
+//     into every frame) are ignored: they are not the artifact's and it cannot fix them;
+//   - gives in-memory localStorage/sessionStorage when the sandbox refuses the real ones,
+//     so artifacts that use them (as much code written elsewhere does) run instead of
+//     throwing a SecurityError; they last only for the page, and window.storage persists;
 //   - opens links in a new tab, since the sandboxed frame cannot navigate away; links to
 //     the artifact's own pages (multi-file artifacts) stay in the frame;
 //   - provides window.storage, window.fs.readFile and window.claude.complete with Claude's
@@ -20,10 +25,12 @@ const previewSandbox = "allow-scripts allow-forms allow-modals allow-downloads a
 //     sets the root's data-scheme, which the design system's tokens read, and fires a
 //     shartifacts:scheme event on the document for pages that draw colors themselves.
 const previewRuntime = `<script>(()=>{
+const ext=/(?:chrome|moz|safari-web|ms-browser)-extension:\/\//,foreign=(f,r)=>ext.test(f||'')||!!r&&ext.test(String(r.stack||''));
+for(const k of['localStorage','sessionStorage']){try{window[k].length}catch(e){const m=new Map();let size=0;const s={get length(){return m.size},key:i=>[...m.keys()][i]??null,getItem:k=>m.has(String(k))?m.get(String(k)):null,setItem:(k,v)=>{k=String(k);v=String(v);const d=k.length+v.length-(m.has(k)?k.length+m.get(k).length:0);if(size+d>5e6)throw new DOMException('This page\'s storage is full.','QuotaExceededError');size+=d;m.set(k,v)},removeItem:k=>{k=String(k);if(m.has(k)){size-=k.length+m.get(k).length;m.delete(k)}},clear:()=>{m.clear();size=0}};try{Object.defineProperty(window,k,{value:s,configurable:true})}catch(e){}}}
 const show=m=>{const p=document.createElement('pre');p.id='error';p.textContent=m;(document.body||document.documentElement).append(p)};
 const seen=new Set(),report=m=>{m=String(m);if(parent!==window&&seen.size<10&&!seen.has(m)){seen.add(m);parent.postMessage({type:'shartifacts-error',message:m},'*')}};
-addEventListener('error',e=>{if(e.target===window){show(e.message);report(e.message+(e.lineno?' (line '+e.lineno+')':''))}else if(e.target&&e.target.tagName)report('failed to load <'+e.target.tagName.toLowerCase()+'> '+(e.target.currentSrc||e.target.src||e.target.href||''))},true);
-addEventListener('unhandledrejection',e=>{show(String(e.reason));report('unhandled rejection: '+String(e.reason&&e.reason.stack||e.reason))});
+addEventListener('error',e=>{if(e.target===window){if(foreign(e.filename,e.error))return;show(e.message);report(e.message+(e.lineno?' (line '+e.lineno+')':''))}else if(e.target&&e.target.tagName)report('failed to load <'+e.target.tagName.toLowerCase()+'> '+(e.target.currentSrc||e.target.src||e.target.href||''))},true);
+addEventListener('unhandledrejection',e=>{if(foreign('',e.reason))return;show(String(e.reason));report('unhandled rejection: '+String(e.reason&&e.reason.stack||e.reason))});
 addEventListener('securitypolicyviolation',e=>report('blocked by the sandbox: '+e.blockedURI+' ('+e.effectiveDirective+')'));
 const dir=(location.pathname.match(/^\/(?:preview\/[^/]+\/\d+|draft-preview\/[^/]+)\//)||[])[0];
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[href]');if(!a||e.defaultPrevented)return;const h=a.getAttribute('href');if(!h||h[0]==='#'||/^javascript:/i.test(h)||a.hasAttribute('download'))return;const u=new URL(h,location.href);if(dir&&u.host===location.host&&u.pathname.startsWith(dir))return;if(!a.target||/^_(self|parent|top)$/i.test(a.target)){a.target='_blank';a.rel='noopener noreferrer'}});
