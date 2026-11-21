@@ -31,3 +31,14 @@ Conventions:
 - **Docs move with behaviour.** Update the page in `docs/` that describes what you changed, and the setup skill if setup or the modes change.
 - **No personal deployment details** (hostnames, IPs, paths, names) in code, tests or docs: use `example.com`, `192.168.1.20` and `myserver.tailnet-name.ts.net`.
 - Commits follow Conventional Commits (`feat(apps): …`, `fix(share): …`, `docs: …`).
+
+## Progress notes for long-running work
+
+Long tasks outlive the context window. Compaction keeps a short summary and drops the rest, so keep the working state on disk where a compacted or brand-new session can pick it up.
+
+- **Start with a progress folder.** When you begin a goal that will take more than a few steps, create `progress/` at the project root (it is git-ignored) and a file for the goal, e.g. `progress/<task-slug>.md`. One file per goal.
+- **What goes in it:** the goal and what "done" means; a checklist of steps (done, in progress, next); decisions and why they were made; approaches that failed and why; key files, commands and URLs; open questions for Lane.
+- **Keep it current.** Update it at every milestone and before every commit, so it is never far behind when auto-compaction happens. Before a manual compact, update it first. Write it so a session with no history could carry on from it alone.
+- **Read it first.** After a compaction, or when starting or resuming work, read `progress/` before re-investigating anything.
+- **When compacting**, keep the current goal, the open checklist items and the path to the progress file in the summary.
+- **Clean up as you go.** Prune finished or stale entries at milestones so the file stays short. When the goal is done, or before the final commit, move anything worth keeping (design decisions, setup or run notes, gotchas) into the README or `docs/`, then delete the goal's progress file. Never reference `progress/` from committed code or docs.
