@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2026.11.22.2
+
+### Fixed
+
+- **Search uses far less memory.** The index keeps each artifact's word spellings in a flat list instead of a map per word, which took about 60 MB off a 134 MB heap on 445 artifacts. Results are unchanged. From Michael Cartwright's fork.
+
 ## 2026.11.22
 
 ### Added
