@@ -70,9 +70,17 @@ type Doc struct {
 	text   [nFields]string
 	tf     [nFields]map[string]int32
 	length [nFields]int
-	// forms counts how each indexed term was written, for corrections and labels.
-	forms  map[string]map[string]int
+	// forms counts how each indexed term was written, for corrections and labels. It is a
+	// flat list, not a map of maps: a map per term costs a few hundred bytes even for the
+	// one spelling nearly every term has, which across a library outweighed all its text.
+	forms  []formVote
 	folded string
+}
+
+// formVote says a term was written as form n times in one artifact.
+type formVote struct {
+	term, form string
+	n          int32
 }
 
 func NewDoc(src Source) *Doc {
@@ -100,7 +108,8 @@ func NewDoc(src Source) *Doc {
 		fComments:    strings.Join(src.Comments, "\n"),
 		fCode:        strings.Join(append(t.code, names...), "\n"),
 	}
-	votes := map[string]map[string]int{}
+	type spelling struct{ term, form string }
+	votes := map[spelling]int32{}
 	var folded strings.Builder
 	for f := range d.text {
 		if len(d.text[f]) > maxText {
@@ -120,10 +129,7 @@ func NewDoc(src Source) *Doc {
 			tf[t]++
 			n++
 			if field(f) != fCode && field(f) != fKind {
-				if votes[t] == nil {
-					votes[t] = map[string]int{}
-				}
-				votes[t][nw]++
+				votes[spelling{t, nw}]++
 			}
 		})
 		if field(f) != fKind {
@@ -132,7 +138,10 @@ func NewDoc(src Source) *Doc {
 		d.tf[f], d.length[f] = tf, n
 	}
 	d.folded = folded.String()
-	d.forms = votes
+	d.forms = make([]formVote, 0, len(votes))
+	for k, n := range votes {
+		d.forms = append(d.forms, formVote{k.term, k.form, n})
+	}
 	return d
 }
 
@@ -175,13 +184,11 @@ func Build(docs []*Doc) *Index {
 				}
 			}
 		}
-		for t, forms := range d.forms {
-			if votes[t] == nil {
-				votes[t] = map[string]int{}
+		for _, v := range d.forms {
+			if votes[v.term] == nil {
+				votes[v.term] = map[string]int{}
 			}
-			for w, n := range forms {
-				votes[t][w] += n
-			}
+			votes[v.term][v.form] += int(v.n)
 		}
 		for _, tag := range d.Tags {
 			if t := term(tag); t != "" && !strings.ContainsAny(tag, "- ") {
