@@ -166,7 +166,7 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	// where uploads go. Everything else is one resources/read away.
 	summary := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides, svg, mermaid, code, file.
 Before updating, get_artifact for the latest base_version.
-Previews are sandboxed: no network, iframes, external URLs (bundled libraries aside) or localStorage; use window.storage.
+Previews are sandboxed: no network, iframes or external URLs (bundled libraries aside); localStorage lasts only for the page, so keep state in window.storage.
 New visual artifacts use get_design_system. Explicit user design instructions always override it. Preserve an existing artifact's design when editing.
 Archive with update_artifact archived:true (ids for many); empty the archive with delete_artifact ids.
 Before publishing a port on a machine here (Docker, a dev server), list and claim it with ports.
