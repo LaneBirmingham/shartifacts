@@ -205,3 +205,18 @@ func TestStemAndDistance(t *testing.T) {
 		t.Errorf("distance beyond the limit %d", d)
 	}
 }
+
+// A word written differently in different artifacts is one term with every spelling
+// remembered, so a typo is corrected to the spelling nearest it whichever artifact used it.
+func TestSpellingsAcrossArtifactsFeedCorrections(t *testing.T) {
+	ix := Build([]*Doc{
+		NewDoc(Source{ID: "a", Kind: "markdown", Title: "Bedtime", Content: "Our stories"}),
+		NewDoc(Source{ID: "b", Kind: "markdown", Title: "Library", Content: "A story story story and a calendar"}),
+	})
+	for query, want := range map[string]string{"storeis": "stories", "calender": "calendar"} {
+		r := ix.Search(Parse(query, now), nil, Options{Now: now})
+		if got := Correct(query, r.Corrections); got != want {
+			t.Errorf("%q corrected to %q, want %q", query, got, want)
+		}
+	}
+}
