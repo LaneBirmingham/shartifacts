@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+## 2026.11.22
+
 ### Added
 
-- **Rust backends, built on the server** ([docs/apps.md](docs/apps.md#rust-backends)). Deploy a crate in `server/` (`Cargo.toml`, `src/main.rs`, `Cargo.lock`) and the runner fetches its crates (`cargo fetch --locked`) and builds it with `cargo build --release --frozen` into a static musl binary, the way it builds Go: a failed build never goes live, a version whose crate didn't change reuses the binary, and each app keeps its compiled crates between builds, so a backend change rebuilds in seconds. Where Landlock works, build scripts and procedural macros, which run code from the app and every crate it uses, are confined: they read the source, the toolchain and the compiler's system files, write only the app's own build cache, get no registry credentials, and can't reach other apps or the runner's token. Rust builds run one at a time, sized to the runner's memory, and a `Cargo.lock` that predates a `Cargo.toml` change is updated for what changed, with a warning. A new **notes-rust** template (React + Axum, the notes app with the same API and data file) starts one from **New app** or `deploy_app`, and the build guide says when to pick Rust over Go. `"backend": {"rust": "./api", "bin": "NAME"}` builds a crate elsewhere or picks one of several binaries. The runner image carries Rust 1.100 (it grows by about 1.3 GB), `SHARTIFACTS_CARGO` points shartifacts at another `cargo`, and `SHARTIFACTS_CARGO_OFFLINE=true` builds only vendored crates. A prebuilt `server/app` beside a crate is still deployed as it is, with a warning, and on a server that can't build Rust, a frontend with an undeclared `server/Cargo.toml` still deploys as a frontend only, with a warning.
+- **Rust backends, built on the server** ([docs/apps.md](docs/apps.md#rust-backends)). Deploy a crate in `server/` and the runner builds it into a static musl binary the way it builds Go: a failed build never goes live, unchanged crates reuse the binary, and build scripts and proc macros run confined by Landlock. A new **notes-rust** template (React + Axum) starts one. The runner image now carries Rust (about 1.3 GB larger); `SHARTIFACTS_CARGO` and `SHARTIFACTS_CARGO_OFFLINE` configure it.
+
+### Fixed
+
+- **Previews that use `localStorage` work** ([docs/artifacts.md](docs/artifacts.md)). The sandboxed preview gets in-memory `localStorage` and `sessionStorage` that last for the page, as app pages already did, instead of throwing a `SecurityError`.
+- **Browser extension errors are no longer blamed on the artifact.** Errors from extension scripts (MetaMask and the like) are ignored in previews and app pages.
 
 ## 2026.11.08
 
