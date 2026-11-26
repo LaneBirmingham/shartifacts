@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2026.11.26
+
 ### Changed
 
 - **Agents get code mode: two tools instead of eighteen** ([docs/agents.md](docs/agents.md#code-mode)). Following Cloudflare's [Code Mode](https://blog.cloudflare.com/code-mode-mcp/), `/mcp` offers `search`, which runs the agent's JavaScript against a spec of every operation (descriptions, TypeScript signatures, JSON Schemas and the guide), and `execute`, which runs it against the operations themselves as methods of `shartifacts`. One `execute` can chain and filter calls and return only what it needs, and connecting costs an agent about 1,000 tokens instead of 5,500. Code runs in a sandboxed child process with no network, files or environment, 30 s of JavaScript time, 256 MiB and 1,000 operations per run; a deletion's confirmation token cannot be used in the run that got it, nor can a run delete what it archived. `SHARTIFACTS_MCP_MODE=tools`, or `?mode=tools` on one connection's URL, keeps one tool per operation.
