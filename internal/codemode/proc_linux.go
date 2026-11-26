@@ -6,3 +6,6 @@ import "syscall"
 func procAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 }
+
+// watchParent has nothing to do: the parent-death signal stops the child.
+func watchParent() {}

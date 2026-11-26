@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,11 @@ func TestErrorsSayWhereAndWhy(t *testing.T) {
 	res := runJob(t, Job{Code: "async () => {\n  const a = 1\n  throw new Error('bad thing')\n}"}, nil)
 	if !strings.Contains(res.Error, "bad thing") || !strings.Contains(res.Error, "code:3") {
 		t.Fatalf("want the message and line 3: %q", res.Error)
+	}
+	// An error whose stack getter throws is still described, not a crash of the sandbox.
+	res = runJob(t, Job{Code: `async () => { throw Object.defineProperty(new Error("x"), "stack", {get() { throw new Error("boom") }}) }`}, nil)
+	if !strings.Contains(res.Error, "threw again") {
+		t.Fatalf("%q", res.Error)
 	}
 	res = runJob(t, Job{Code: "async () => { return ( }"}, nil)
 	if !strings.HasPrefix(res.Error, "SyntaxError") {
@@ -156,10 +162,21 @@ func TestNothingToReachOut(t *testing.T) {
 	if string(res.Value) != `["undefined","undefined","undefined","undefined","undefined","undefined","undefined","undefined"]` {
 		t.Fatalf("%s %q", res.Value, res.Error)
 	}
-	// A source map comment naming a file is not read.
+	// A source map comment naming a file is not read: not in the program, and not in what
+	// eval or new Function compile, where /dev/zero would run the child out of memory.
 	res = runJob(t, Job{Code: "async () => { throw new Error('x') }\n//# sourceMappingURL=/etc/passwd"}, nil)
 	if !strings.Contains(res.Error, "Error: x") {
 		t.Fatalf("%q", res.Error)
+	}
+	zero := strings.Repeat("../", 40) + "dev/zero"
+	for _, code := range []string{
+		"async () => eval('1\\n//# sourceMappingURL=" + zero + "')",
+		"async () => eval('1\\n//# sourceMappingURL=/dev/zero')",
+		"async () => new Function('return 1\\n//# sourceMappingURL=" + zero + "')()",
+	} {
+		if res := runJob(t, Job{Limits: Limits{Wall: 10 * time.Second}, Code: code}, nil); res.Error != "" || string(res.Value) != "1" {
+			t.Fatalf("%s: %s %q", code, res.Value, res.Error)
+		}
 	}
 }
 
@@ -213,8 +230,14 @@ func TestLimits(t *testing.T) {
 		return json.RawMessage(`1`), nil
 	}
 	res = runJob(t, Job{Limits: Limits{Calls: 3}, API: "api", Ops: []string{"op"}, Code: "async () => { for (let i = 0; i < 5; i++) await api.op({}) }"}, ok)
-	if !strings.Contains(res.Error, "made its 3 calls") || len(res.Calls) != 4 {
+	if !strings.Contains(res.Error, "made its 3 calls") || len(res.Calls) != 3 {
 		t.Fatalf("the call limit: %q %v", res.Error, res.Calls)
+	}
+	// Code that ignores the refusal and keeps calling spends JavaScript time, and the calls
+	// it was refused are not kept.
+	res = runJob(t, Job{Limits: Limits{Calls: 1, CPU: 300 * time.Millisecond}, API: "api", Ops: []string{"op"}, Code: "async () => { for (;;) try { await api.op({}) } catch {} }"}, ok)
+	if !strings.Contains(res.Error, "more than 300ms") || len(res.Calls) != 1 {
+		t.Fatalf("refused calls in a loop: %q, %d calls", res.Error, len(res.Calls))
 	}
 	res = runJob(t, Job{Limits: Limits{Wall: 300 * time.Millisecond}, Code: "async () => { await new Promise(r => setTimeout(r, 5000)) }"}, nil)
 	if !strings.Contains(res.Error, "longer than 300ms") {
@@ -223,6 +246,92 @@ func TestLimits(t *testing.T) {
 	// After all that, the sandbox is still there for the next run.
 	if res := runJob(t, Job{Code: "async () => 1"}, nil); string(res.Value) != "1" {
 		t.Fatal(res)
+	}
+}
+
+func TestSizes(t *testing.T) {
+	call := func(_ context.Context, op string, args json.RawMessage) (json.RawMessage, error) {
+		if op == "big" {
+			return json.RawMessage(`"` + strings.Repeat("x", maxData) + `"`), nil
+		}
+		return args, nil
+	}
+	res := runJob(t, Job{API: "api", Ops: []string{"big", "echo"}, Code: `async () => {
+		let big = ""
+		try { await api.big({}) } catch (e) { big = e.message }
+		let args = ""
+		try { await api.echo({s: "x".repeat(13 << 20)}) } catch (e) { args = e.message }
+		// The run goes on, and HTML characters arrive as themselves.
+		return {big, args, echo: (await api.echo({s: "<b>&</b>"})).s}
+	}`}, call)
+	var out struct{ Big, Args, Echo string }
+	if res.Error != "" || json.Unmarshal(res.Value, &out) != nil {
+		t.Fatalf("%q %s", res.Error, res.Value)
+	}
+	if !strings.Contains(out.Big, "big returned 32 MiB") || !strings.Contains(out.Args, "13 MiB as JSON, more than the 12 MiB") || out.Echo != "<b>&</b>" {
+		t.Fatalf("%+v", out)
+	}
+	if len(res.Calls) != 2 || res.Calls[0].Error == "" {
+		t.Fatalf("an oversized result is a failed call; oversized arguments are no call: %v", res.Calls)
+	}
+	res = runJob(t, Job{Code: `async () => "x".repeat(33 << 20)`}, nil)
+	if !strings.Contains(res.Error, "the return value is 33 MiB") {
+		t.Fatalf("%.200q", res.Error)
+	}
+	res = runJob(t, Job{Code: `async () => { throw new Error("y".repeat(1 << 20)) }`}, nil)
+	if len(res.Error) > maxLogs+10 || !strings.HasPrefix(res.Error, "Error: yyy") {
+		t.Fatalf("an error message should be cut: %d bytes", len(res.Error))
+	}
+}
+
+func TestBusy(t *testing.T) {
+	r := &Runner{Concurrent: 1, Queue: 200 * time.Millisecond}
+	held := make(chan error, 1)
+	go func() {
+		_, err := r.Run(context.Background(), Job{Code: "async () => new Promise(r => setTimeout(r, 1500))"}, nil)
+		held <- err
+	}()
+	time.Sleep(300 * time.Millisecond)
+	start := time.Now()
+	if _, err := r.Run(context.Background(), Job{Code: "async () => 1"}, nil); err == nil || !strings.Contains(err.Error(), "busy") || time.Since(start) > time.Second {
+		t.Fatalf("a run should be refused once it has waited its turn: %v after %s", err, time.Since(start))
+	}
+	if err := <-held; err != nil {
+		t.Fatal(err)
+	}
+	if res, err := r.Run(context.Background(), Job{Code: "async () => 1"}, nil); err != nil || string(res.Value) != "1" {
+		t.Fatal(res, err)
+	}
+}
+
+// The child stops itself after its wall limit, so one whose parent is gone, or never
+// stopped it, cannot run on.
+func TestChildKeepsItsOwnDeadline(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(self, ChildArg)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	job, _ := json.Marshal(jobWire{Code: "async () => new Promise(r => setTimeout(r, 1e9))", CPUms: 1000, WallMs: 100, Memory: 64 << 20, Calls: 1})
+	stdin.Write(append(job, '\n'))
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != exitWall {
+			t.Fatalf("want exit %d: %v", exitWall, err)
+		}
+	case <-time.After(15 * time.Second):
+		cmd.Process.Kill()
+		t.Fatal("the child ran on past its wall limit")
 	}
 }
 
@@ -289,5 +398,10 @@ func TestConsoleIsBounded(t *testing.T) {
 	}
 	if !utf8.ValidString(res.Logs[0]) {
 		t.Fatal("a cut line should stay valid UTF-8")
+	}
+	// Empty lines count their newlines, so a flood of them is bounded too.
+	res = runJob(t, Job{Limits: Limits{CPU: 300 * time.Millisecond}, Code: "async () => { for (;;) console.log() }"}, nil)
+	if !strings.Contains(res.Error, "more than 300ms") || len(res.Logs) > maxLogs+1 {
+		t.Fatalf("%d lines, error %q", len(res.Logs), res.Error)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/store"
 )
@@ -208,5 +209,101 @@ func TestCodeModeConfirmNeedsANewRun(t *testing.T) {
 	text, _, isErr = runCode(t, h, "execute", fmt.Sprintf(`async () => shartifacts.delete_artifact({id: %q, base_version: 1, confirm: %q})`, out.ID, out.Confirm))
 	if isErr || !strings.Contains(text, `"deleted":true`) {
 		t.Fatalf("confirming in a new run: %s", text)
+	}
+
+	// Archived artifacts are deleted without a token, so archiving first is no way round:
+	// what a run archived it may not delete, by id or in bulk.
+	text, _, isErr = runCode(t, h, "execute", `async () => {
+		const a = await shartifacts.create_artifact({title: "Old", kind: "markdown", content: "# old"})
+		const b = await shartifacts.create_artifact({title: "Older", kind: "markdown", content: "# older"})
+		await shartifacts.update_artifact({id: a.id, archived: true})
+		await shartifacts.update_artifact({ids: [b.id], archived: true})
+		const refused = []
+		for (const args of [{id: a.id}, {ids: [a.id]}, {id: b.id}, {ids: [b.id]}]) {
+			try { await shartifacts.delete_artifact(args) } catch (e) { refused.push(e.message) }
+		}
+		return {ids: [a.id, b.id], refused}
+	}`)
+	var archived struct {
+		IDs     []string
+		Refused []string
+	}
+	if isErr || json.Unmarshal([]byte(text), &archived) != nil || len(archived.Refused) != 4 || !strings.Contains(archived.Refused[0], "this run archived") {
+		t.Fatalf("%s", text)
+	}
+	ids, _ := json.Marshal(archived.IDs)
+	text, _, isErr = runCode(t, h, "execute", `async () => shartifacts.delete_artifact({ids: `+string(ids)+`})`)
+	if isErr || strings.Count(text, archived.IDs[0])+strings.Count(text, archived.IDs[1]) != 2 || strings.Contains(text, `"failed":[{`) {
+		t.Fatalf("deleting them in a new run: %s", text)
+	}
+}
+
+// An operation answers code as much as the same tool answers over HTTP: a history of
+// several large versions is more than the SDK's in-memory transport carries in one frame.
+func TestCodeModeLargeResults(t *testing.T) {
+	h := testServer(t)
+	text, _, isErr := runCode(t, h, "execute", `async () => {
+		const big = n => "# " + String(n).repeat((2 << 20) - 16)
+		let a = await shartifacts.create_artifact({title: "Big", kind: "markdown", content: big(1)})
+		for (let v = 1; v < 5; v++) a = await shartifacts.update_artifact({id: a.id, base_version: v, content: big(v + 1)})
+		const all = await shartifacts.get_artifact({id: a.id, history: true})
+		const again = await shartifacts.get_artifact({id: a.id})
+		return {versions: all.revisions.length, bytes: all.revisions.reduce((n, r) => n + r.content.length, 0), latest: again.revisions[0].version}
+	}`)
+	if isErr || text != `{"versions":5,"bytes":10485690,"latest":5}` {
+		t.Fatalf("%.300s", text)
+	}
+}
+
+// An execute may run longer than the server's write timeout and still be answered.
+func TestCodeModeAnswersPastTheWriteTimeout(t *testing.T) {
+	srv := httptest.NewUnstartedServer(testServer(t))
+	srv.Config.WriteTimeout = 300 * time.Millisecond
+	srv.Start()
+	defer srv.Close()
+	args, _ := json.Marshal(map[string]any{"name": "execute", "arguments": map[string]string{"code": `async () => { await new Promise(r => setTimeout(r, 1000)); return "late" }`}})
+	req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":`+string(args)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Result struct {
+			Content []struct{ Text string }
+		}
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Result.Content) == 0 || out.Result.Content[0].Text != "late" {
+		t.Fatalf("%d %v %+v", resp.StatusCode, err, out)
+	}
+}
+
+// Executes that wait hold their sandboxes, and a later execute is told the server is busy
+// rather than kept waiting; search has sandboxes of its own.
+func TestCodeModeSearchHasItsOwnTurn(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st, Web: testServerWeb()}
+	s.code.Concurrent, s.code.Queue = 1, 300*time.Millisecond
+	h := s.Handler()
+	held := make(chan string, 1)
+	go func() {
+		text, _, _ := runCode(t, h, "execute", `async () => { await new Promise(r => setTimeout(r, 2000)); return "held" }`)
+		held <- text
+	}()
+	time.Sleep(400 * time.Millisecond)
+	start := time.Now()
+	if text, _, isErr := runCode(t, h, "search", `async () => Object.keys(spec.operations).length`); isErr || text != "18" || time.Since(start) > time.Second {
+		t.Fatalf("search waited on execute: %s after %s", text, time.Since(start))
+	}
+	if text, _, isErr := runCode(t, h, "execute", `async () => 1`); !isErr || !strings.Contains(text, "busy") {
+		t.Fatalf("a second execute should be told the server is busy: %s", text)
+	}
+	if text := <-held; text != "held" {
+		t.Fatal(text)
 	}
 }

@@ -96,7 +96,10 @@ type Server struct {
 	handler       http.Handler
 	handlerOnce   sync.Once
 	search        searchCache
-	code          codemode.Runner
+	// code runs execute's code and codeSearch search's, in separate pools so that
+	// executes waiting on changes cannot keep a search from its turn.
+	code       codemode.Runner
+	codeSearch codemode.Runner
 }
 type draft struct {
 	Revision store.Revision
@@ -321,6 +324,10 @@ func (s *Server) build() http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		// The answer is written when the call ends, which for an execute can be after the
+		// server's write timeout. Writers without deadlines (a test recorder) have none to
+		// extend.
+		http.NewResponseController(w).SetWriteDeadline(time.Now().Add(mcpWriteTime()))
 		mcpHandler.ServeHTTP(w, r)
 	})
 	files := http.FileServer(http.FS(s.Web))

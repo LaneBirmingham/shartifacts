@@ -106,12 +106,19 @@ type CallRecord struct {
 	Error string `json:"error,omitempty"`
 }
 
+// DefaultQueue is how long a run waits for a free slot before it is refused.
+const DefaultQueue = 30 * time.Second
+
 // Runner starts runs. Its zero value is ready to use.
 type Runner struct {
 	// Self is the shartifacts binary to re-execute; empty means os.Executable.
 	Self string
 	// Concurrent is how many runs may go at once (default 4); later ones wait their turn.
 	Concurrent int
+	// Queue is how long a run waits for its turn (default DefaultQueue). A slot is held
+	// for a whole run, waits on operations and timers included, so runs that wait a long
+	// time could otherwise stall every other caller until its request gave up.
+	Queue time.Duration
 
 	once  sync.Once
 	slots chan struct{}
@@ -133,15 +140,35 @@ type jobWire struct {
 	API     string                     `json:"api,omitempty"`
 	Ops     []string                   `json:"ops,omitempty"`
 	CPUms   int64                      `json:"cpu_ms"`
+	WallMs  int64                      `json:"wall_ms"`
 	Memory  int64                      `json:"memory"`
+	Calls   int                        `json:"calls"`
 }
 
-// maxLine bounds one message from the child: an operation's arguments can carry an
-// artifact's whole source and files, which the store caps at 8 MiB a version.
-const maxLine = 64 << 20
+// The sizes one message may carry. maxArgs is what /mcp accepts as a whole request, so code
+// can send an operation no more than a tool call could. maxData bounds an operation's
+// result handed to the code and the value the code returns: a child holds its parsed copy
+// within its memory limit, and an agent is shown at most a megabyte of the answer anyway.
+const (
+	maxArgs = 12 << 20
+	maxData = 32 << 20
+	maxLine = maxData + 64<<10
+)
 
-// maxLogs bounds the console output kept from one run.
+// maxLogs bounds the console output kept from one run. Each line counts its newline, so
+// a flood of empty lines is bounded too.
 const maxLogs = 64 << 10
+
+// encode writes m as one line. HTML characters stay as they are: escaping them as \u003c
+// would make an HTML artifact's source several times larger on the wire.
+func encode(w *bufio.Writer, m any) error {
+	e := json.NewEncoder(w)
+	e.SetEscapeHTML(false)
+	if err := e.Encode(m); err != nil {
+		return err
+	}
+	return w.Flush()
+}
 
 // Run runs job in a child process, serving its operations with call. The error is for
 // failures to run at all; the code's own failures are in Result.Error.
@@ -154,9 +181,17 @@ func (r *Runner) Run(ctx context.Context, job Job, call Call) (*Result, error) {
 		}
 		r.slots = make(chan struct{}, n)
 	})
+	queue := r.Queue
+	if queue <= 0 {
+		queue = DefaultQueue
+	}
+	wait := time.NewTimer(queue)
+	defer wait.Stop()
 	select {
 	case r.slots <- struct{}{}:
 		defer func() { <-r.slots }()
+	case <-wait.C:
+		return nil, fmt.Errorf("code mode is busy: %d runs are going and none finished within %s; try again shortly", cap(r.slots), queue)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -193,16 +228,8 @@ func (r *Runner) Run(ctx context.Context, job Job, call Call) (*Result, error) {
 		cmd.Wait()
 	}()
 	in := bufio.NewWriter(stdin)
-	send := func(m any) error {
-		b, err := json.Marshal(m)
-		if err != nil {
-			return err
-		}
-		in.Write(b)
-		in.WriteByte('\n')
-		return in.Flush()
-	}
-	if err := send(jobWire{Code: job.Code, Globals: job.Globals, API: job.API, Ops: job.Ops, CPUms: lim.CPU.Milliseconds(), Memory: lim.Memory}); err != nil {
+	send := func(m any) error { return encode(in, m) }
+	if err := send(jobWire{Code: job.Code, Globals: job.Globals, API: job.API, Ops: job.Ops, CPUms: lim.CPU.Milliseconds(), WallMs: lim.Wall.Milliseconds(), Memory: lim.Memory, Calls: lim.Calls}); err != nil {
 		return nil, fmt.Errorf("starting the code sandbox: %w", err)
 	}
 
@@ -218,7 +245,7 @@ func (r *Runner) Run(ctx context.Context, job Job, call Call) (*Result, error) {
 			cmd.Wait()
 			switch {
 			case errors.Is(err, errLineTooLong):
-				res.Error = "the code sent a message larger than 64 MiB"
+				res.Error = fmt.Sprintf("the code sent a message larger than %d MiB", maxLine>>20)
 			case errors.Is(runCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 				res.Error = fmt.Sprintf("the run took longer than %s and was stopped", lim.Wall)
 			case ctx.Err() != nil:
@@ -242,21 +269,28 @@ func (r *Runner) Run(ctx context.Context, job Job, call Call) (*Result, error) {
 		case "log":
 			if logBytes < maxLogs {
 				line := truncate(m.Text, maxLogs-logBytes)
-				logBytes += len(line)
+				logBytes += len(line) + 1
 				res.Logs = append(res.Logs, line)
 				if logBytes >= maxLogs {
 					res.Logs = append(res.Logs, "… later console output was dropped (64 KiB kept)")
 				}
 			}
 		case "call":
+			// The child refuses calls past the limit and oversized arguments itself, so they
+			// cost the code JavaScript time rather than a round trip each; these checks are
+			// the backstop.
+			if len(res.Calls) >= lim.Calls || len(m.Data) > maxArgs {
+				res.Error = fmt.Sprintf("the code called more than %d operations, or sent one more than %d MiB, and was stopped", lim.Calls, maxArgs>>20)
+				return res, nil
+			}
 			reply := message{T: "ok"}
 			if call == nil {
 				reply = message{T: "err", Text: "this run has no operations"}
-			} else if len(res.Calls) >= lim.Calls {
-				reply = message{T: "err", Text: fmt.Sprintf("this run has made its %d calls; return what you have and continue in another", lim.Calls)}
-				res.Calls = append(res.Calls, CallRecord{Op: m.Op, Error: "too many calls"})
 			} else {
 				value, err := call(runCtx, m.Op, m.Data)
+				if err == nil && len(value) > maxData {
+					err = fmt.Errorf("%s returned %d MiB, more than the %d MiB an operation can hand to code: ask for less, such as one version rather than the history", m.Op, len(value)>>20, maxData>>20)
+				}
 				if err != nil {
 					reply = message{T: "err", Text: err.Error()}
 					res.Calls = append(res.Calls, CallRecord{Op: m.Op, Error: err.Error()})

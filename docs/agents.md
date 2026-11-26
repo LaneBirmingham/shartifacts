@@ -103,22 +103,24 @@ async () => {
 }
 ```
 
-An operation is the tool of the same name: `execute` calls it on the connection's own tools-mode server, through an in-memory MCP session, so it is validated, signed in and answered exactly as that tool would be.
+An operation is the tool of the same name: `execute` calls it on the connection's own tools-mode server, through an in-process MCP session, so it is validated, signed in and answered exactly as that tool would be.
 
 **Results.** The function's return value comes back as the tool's text (a string as itself, anything else as JSON), followed by what it wrote with `console` as a second text block. When the code throws, does not parse, or runs out of time or memory, the result is an error with the message and stack lines that point at the agent's own code, and lists the operations it had called by then, so the agent knows what it already changed. Code may be statements instead of a function (they run as an async function's body) and may carry TypeScript annotations, which are stripped.
 
-**The sandbox.** Code runs in a child process, the shartifacts binary started again, holding a [goja](https://github.com/dop251/goja) JavaScript runtime. It has no network, files, environment or Node APIs; `setTimeout`, `clearTimeout`, `atob` and `btoa` work. Operations are sent back to the server to run. A separate process makes the limits hard and keeps a crash away from the server:
+**The sandbox.** Code runs in a child process, the shartifacts binary started again, holding a [goja](https://github.com/dop251/goja) JavaScript runtime. It has no network, files, environment or Node APIs, and source maps are read only from `data:` URLs, never from a path a `sourceMappingURL` comment names (in `eval` and `new Function` they are not read at all); `setTimeout`, `clearTimeout`, `atob` and `btoa` work. Operations are sent back to the server to run. A separate process makes the limits hard and keeps a crash away from the server:
 
 | Limit | Value |
 | --- | --- |
 | JavaScript time per run | 30 s, not counting time spent waiting on operations and timers, so a run can deploy an app or wait on `watch_artifacts` |
-| Whole run | 10 minutes |
+| Whole run | 10 minutes; `/mcp` holds the answer open that long, past the server's usual 5-minute write timeout |
 | Memory | 256 MiB of heap |
-| Operations per run | 1,000 |
-| Runs at once | 4; others wait their turn |
-| Result | 1 MiB of text; past that it is cut, with a note to return less |
+| Operations per run | 1,000; past that, each call throws at once |
+| Runs at once | 4 for `execute` and 4 for `search`, so executes waiting on changes do not hold up a search. A run that waits more than 30 s for its turn is refused as busy |
+| `search` | 1 minute per run |
+| Sizes | An operation's arguments up to 12 MiB (what `/mcp` takes in one request); its result, and the value the code returns, up to 32 MiB |
+| Result | 1 MiB of text; past that it is cut, with a note to return less. Console output: 64 KiB, each line counting its newline |
 
-**Confirmations.** Deleting an artifact still in the library, or an app, takes two calls with the person's say-so in between ([below](#how-agents-work-with-artifacts)). Code cannot answer for them: a confirmation token is refused in the same run that was handed it. The agent returns it, asks, and confirms in a new `execute`.
+**Confirmations.** Deleting an artifact still in the library, or an app, takes two calls with the person's say-so in between ([below](#how-agents-work-with-artifacts)). Code cannot answer for them: a confirmation token is refused in the same run that was handed it, and so is deleting an artifact the same run archived (an archived artifact is deleted without a token, because archiving was meant to be the step the person sees). The agent returns what it has, asks, and confirms or deletes in a new `execute`.
 
 **Tools mode.** `SHARTIFACTS_MCP_MODE=tools` offers one tool per operation instead, and a single connection can ask for either by adding `?mode=tools` or `?mode=code` to the URL (`http://192.168.1.20:8080/mcp?mode=tools`). Tools mode suits clients or models that do not write code reliably, and people who want their client to ask before each operation: a client's permission prompt is per tool, so in code mode, approving `execute` approves every operation the code calls.
 

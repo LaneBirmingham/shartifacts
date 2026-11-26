@@ -34,6 +34,8 @@ func Child() {
 const (
 	exitMemory = 3
 	exitCPU    = 4
+	exitWall   = 5
+	exitParent = 6
 )
 
 // wire is the child's side of the pipe. The watchdogs write to it from their own
@@ -45,15 +47,13 @@ type wire struct {
 }
 
 func (w *wire) send(m message) error {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return err
+	if m.T == "fail" {
+		// An error's message is the code's own string, so it could be any size.
+		m.Text = truncate(m.Text, maxLogs)
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.w.Write(b)
-	w.w.WriteByte('\n')
-	return w.w.Flush()
+	return encode(w.w, m)
 }
 
 // call sends an operation to the parent and waits for its reply. Only the runtime's
@@ -82,7 +82,19 @@ func child(stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	go watchMemory(job.Memory, w)
-	r := &run{wire: w, vm: goja.New()}
+	// The parent kills the child at the wall limit, and on Linux the kernel kills it if the
+	// parent dies first. Elsewhere nothing would, so the child keeps its own deadline and
+	// watches for being orphaned.
+	if job.WallMs > 0 {
+		time.AfterFunc(time.Duration(job.WallMs)*time.Millisecond+2*time.Second, func() { os.Exit(exitWall) })
+	}
+	go watchParent()
+	r := &run{wire: w, vm: goja.New(), maxCalls: job.Calls}
+	// eval and new Function compile with the runtime's options, and by default those load
+	// the source map a sourceMappingURL comment names from a file path: code could probe
+	// the server's files, or block on a FIFO. The program itself is compiled with
+	// noSourceMapFiles.
+	r.vm.SetParserOptions(parser.WithDisableSourceMaps)
 	r.cpu = newBudget(time.Duration(job.CPUms)*time.Millisecond, func() {
 		r.vm.Interrupt(fmt.Sprintf("the code ran JavaScript for more than %s (waiting on operations and timers does not count)", time.Duration(job.CPUms)*time.Millisecond))
 	}, func() {
@@ -102,6 +114,8 @@ type run struct {
 	timers []*timer
 	nextID int64
 	logged int
+	// calls counts the operations called; past maxCalls they are refused here.
+	calls, maxCalls int
 }
 
 type timer struct {
@@ -178,6 +192,9 @@ func (r *run) finish(v goja.Value, err error) message {
 	}
 	if s == "" {
 		return message{T: "done"}
+	}
+	if len(s) > maxData {
+		return message{T: "fail", Text: fmt.Sprintf("the return value is %d MiB as JSON, more than the %d MiB a run can return: return less, such as the fields you need", len(s)>>20, maxData>>20)}
 	}
 	return message{T: "done", Data: json.RawMessage(s)}
 }
@@ -266,9 +283,21 @@ func (r *run) operation(api, op string) func(goja.FunctionCall) goja.Value {
 			if err != nil {
 				panic(vm.NewTypeError("%s.%s: its arguments cannot be sent as JSON: %s", api, op, r.describeError(err)))
 			}
+			if len(s) > maxArgs {
+				panic(vm.NewTypeError("%s.%s: its arguments are %d MiB as JSON, more than the %d MiB an operation takes; send large files with list_media's upload URL", api, op, len(s)>>20, maxArgs>>20))
+			}
 			args = s
 		}
 		promise, resolve, reject := vm.NewPromise()
+		if r.calls >= r.maxCalls {
+			// Refused here, so a loop that ignores the refusal spends its JavaScript time
+			// rather than waiting on round trips to the parent.
+			e := r.newError(fmt.Sprintf("this run has made its %d calls; return what you have and continue in another", r.maxCalls))
+			e.Set("operation", op)
+			reject(e)
+			return vm.ToValue(promise)
+		}
+		r.calls++
 		r.cpu.pause()
 		reply, err := r.wire.call(op, json.RawMessage(args))
 		r.cpu.resume()
@@ -306,7 +335,9 @@ func (r *run) parseJSON(raw json.RawMessage) (goja.Value, error) {
 		return goja.Undefined(), nil
 	}
 	parse, _ := goja.AssertFunction(r.vm.Get("JSON").ToObject(r.vm).Get("parse"))
-	return parse(goja.Undefined(), r.vm.ToValue(string(raw)))
+	v, err := parse(goja.Undefined(), r.vm.ToValue(string(raw)))
+	r.rearm(err)
+	return v, err
 }
 
 // stringify is JSON.stringify; "" means the value has no JSON form (a function, say).
@@ -314,6 +345,7 @@ func (r *run) stringify(v goja.Value) (string, error) {
 	fn, _ := goja.AssertFunction(r.vm.Get("JSON").ToObject(r.vm).Get("stringify"))
 	s, err := fn(goja.Undefined(), v)
 	if err != nil {
+		r.rearm(err)
 		return "", err
 	}
 	if goja.IsUndefined(s) {
@@ -323,8 +355,36 @@ func (r *run) stringify(v goja.Value) (string, error) {
 }
 
 // describe renders a thrown or rejected value: an Error with its stack, anything else as
-// itself.
+// itself. Reading it runs the code's own getters and toString, which can throw in turn; it
+// is read inside the runtime, so that comes back as an error rather than a panic here.
 func (r *run) describe(v goja.Value) string {
+	var s string
+	read, _ := goja.AssertFunction(r.vm.ToValue(func(goja.FunctionCall) goja.Value {
+		s = r.render(v)
+		return goja.Undefined()
+	}))
+	if _, err := read(goja.Undefined()); err != nil {
+		var interrupted *goja.InterruptedError
+		if errors.As(err, &interrupted) {
+			r.rearm(err)
+			return fmt.Sprint(interrupted.Value())
+		}
+		return "uncaught exception (reading it threw again)"
+	}
+	return s
+}
+
+// rearm passes the CPU limit's interrupt on. A call into the runtime from Go, such as
+// JSON.stringify for console.log, returns the interrupt as an error, and the code that made
+// the call would otherwise carry on running.
+func (r *run) rearm(err error) {
+	var interrupted *goja.InterruptedError
+	if errors.As(err, &interrupted) {
+		r.vm.Interrupt(interrupted.Value())
+	}
+}
+
+func (r *run) render(v goja.Value) string {
 	if obj, ok := v.(*goja.Object); ok {
 		if stack := obj.Get("stack"); stack != nil && !goja.IsUndefined(stack) {
 			if s := stack.String(); s != "" {
@@ -375,7 +435,7 @@ func (r *run) installConsole() {
 				parts[i] = r.format(a)
 			}
 			line := truncate(prefix+strings.Join(parts, " "), maxLogs-r.logged)
-			r.logged += len(line)
+			r.logged += len(line) + 1
 			r.wire.send(message{T: "log", Text: line})
 			return goja.Undefined()
 		})

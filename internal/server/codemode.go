@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/LaneBirmingham/shartifacts/internal/codemode"
@@ -49,6 +51,17 @@ const codeModeSummary = "Two tools: execute runs an async JavaScript arrow funct
 // enters its context, and past this much it asked for too much.
 const maxCodeResult = 1 << 20
 
+// searchLimits bound a search. It only reads the spec, so it needs neither timers nor long
+// waits, and its own pool of sandboxes keeps it answering while executes wait on changes.
+var searchLimits = codemode.Limits{Wall: time.Minute}
+
+// mcpWriteTime is how long /mcp may take to answer: an execute may wait its turn and then
+// run for its wall limit, past the server's usual write timeout, and an answer lost to that
+// timeout would leave the agent not knowing what its code changed.
+func mcpWriteTime() time.Duration {
+	return codemode.DefaultQueue + codemode.DefaultLimits.Wall + time.Minute
+}
+
 // codeInput is what search and execute take.
 type codeInput struct {
 	Code string `json:"code" jsonschema:"A JavaScript async arrow function, e.g. async () => { ... }; what it returns comes back, a string as itself and anything else as JSON"`
@@ -72,7 +85,7 @@ func (s *Server) codeServer(m *mcp.Server, ts *toolset, guide string) *mcp.Serve
 		if err != nil {
 			return nil, nil, err
 		}
-		res, err := s.code.Run(ctx, codemode.Job{Code: in.Code, Globals: map[string]json.RawMessage{"spec": raw}}, nil)
+		res, err := s.codeSearch.Run(ctx, codemode.Job{Code: in.Code, Globals: map[string]json.RawMessage{"spec": raw}, Limits: searchLimits}, nil)
 		return codeResult(res, err)
 	})
 	lim := codemode.DefaultLimits
@@ -82,7 +95,7 @@ func (s *Server) codeServer(m *mcp.Server, ts *toolset, guide string) *mcp.Serve
 			"Chain calls, loop and filter in one run, and return only what you need; console output comes back too. " +
 			"Operations: " + strings.Join(names, ", ") + ". search has each one's inputs. " +
 			fmt.Sprintf("The sandbox has no network, files or Node APIs (setTimeout, atob and btoa work) and %s of JavaScript time and %d MiB per run; waiting on operations is free. ", lim.CPU, lim.Memory>>20) +
-			"A confirmation token (delete_artifact, manage_app delete) cannot be used in the run that got it: return it, ask the person, then confirm in another execute.",
+			"A confirmation token (delete_artifact, manage_app delete) cannot be used in the run that got it, nor can a run delete what it archived: return it, ask the person, then confirm in another execute.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in codeInput) (*mcp.CallToolResult, any, error) {
 		d := &dispatcher{server: ts.server}
@@ -135,42 +148,85 @@ func codeSpec(ts *toolset, guide string) (json.RawMessage, error) {
 }
 
 // dispatcher answers one execute's operations. It calls the tool of the same name on the
-// connection's classic server, through an in-memory session opened at the first call, so
-// an operation is validated and answered exactly as that tool would be.
+// connection's classic server, through an in-process session opened at the first call, so
+// an operation is validated and answered exactly as that tool would be. The runner serves
+// a run's calls one at a time, so it needs no lock.
 type dispatcher struct {
 	server  *mcp.Server
-	once    sync.Once
-	err     error
 	client  *mcp.ClientSession
 	session *mcp.ServerSession
-	// issued are the confirmation tokens this run was handed.
-	issued map[string]bool
+	// issued are the confirmation tokens this run was handed, and archived the artifacts
+	// it archived.
+	issued   map[string]bool
+	archived map[string]bool
 }
 
-// errConfirmInRun refuses a confirmation the same run was handed. The two calls of a
-// deletion are for the person to say yes in between: as separate tool calls they could;
-// inside one run of code they could not.
-var errConfirmInRun = errors.New("that confirmation was handed out in this same run, so the person has not seen it: return the confirm token, ask them, and confirm in a new execute once they agree")
+// The two calls of a deletion are for the person to say yes in between: as separate tool
+// calls they could; inside one run of code they could not. So a run may not redeem a
+// confirmation it was handed, nor delete what it archived, since deleting an archived
+// artifact needs no confirmation (archiving was meant to be the first, visible step).
+var (
+	errConfirmInRun = errors.New("that confirmation was handed out in this same run, so the person has not seen it: return the confirm token, ask them, and confirm in a new execute once they agree")
+	errDeleteInRun  = errors.New("this run archived that artifact, so the person has not seen it go: return what you archived, ask them, and delete it in a new execute once they agree")
+)
+
+// target is the artifacts an operation's arguments name, and what it asks of them.
+type target struct {
+	ID       string   `json:"id"`
+	IDs      []string `json:"ids"`
+	Confirm  string   `json:"confirm"`
+	Archived *bool    `json:"archived"`
+}
+
+func (t target) names(set map[string]bool) bool {
+	if set[t.ID] {
+		return true
+	}
+	for _, id := range t.IDs {
+		if set[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// connect opens the session. Its frames are not capped as the SDK's in-memory transport's
+// are, at 16 MiB: both ends are this process, the code's arguments are already bounded by
+// the sandbox, and a result is as large as the same tool would answer over HTTP.
+func (d *dispatcher) connect(ctx context.Context) error {
+	serverIn, clientOut := io.Pipe()
+	clientIn, serverOut := io.Pipe()
+	session, err := d.server.Connect(ctx, &mcp.IOTransport{Reader: serverIn, Writer: serverOut, MaxLineLength: -1}, nil)
+	if err != nil {
+		return err
+	}
+	client, err := mcp.NewClient(&mcp.Implementation{Name: "shartifacts-code-mode", Version: appVersion}, nil).Connect(ctx, &mcp.IOTransport{Reader: clientIn, Writer: clientOut, MaxLineLength: -1}, nil)
+	if err != nil {
+		session.Close()
+		return err
+	}
+	d.session, d.client = session, client
+	return nil
+}
 
 func (d *dispatcher) call(ctx context.Context, op string, args json.RawMessage) (json.RawMessage, error) {
-	d.once.Do(func() {
-		ct, st := mcp.NewInMemoryTransports()
-		if d.session, d.err = d.server.Connect(ctx, st, nil); d.err != nil {
-			return
-		}
-		d.client, d.err = mcp.NewClient(&mcp.Implementation{Name: "shartifacts-code-mode", Version: appVersion}, nil).Connect(ctx, ct, nil)
-	})
-	if d.err != nil {
-		return nil, d.err
-	}
-	var asked struct {
-		Confirm string `json:"confirm"`
-	}
-	if json.Unmarshal(args, &asked) == nil && asked.Confirm != "" && d.issued[asked.Confirm] {
+	var asked target
+	json.Unmarshal(args, &asked)
+	if asked.Confirm != "" && d.issued[asked.Confirm] {
 		return nil, errConfirmInRun
+	}
+	if op == "delete_artifact" && asked.names(d.archived) {
+		return nil, errDeleteInRun
+	}
+	if d.client == nil {
+		if err := d.connect(ctx); err != nil {
+			return nil, err
+		}
 	}
 	res, err := d.client.CallTool(ctx, &mcp.CallToolParams{Name: op, Arguments: args})
 	if err != nil {
+		// The session may be what failed; the run's next call opens a fresh one.
+		d.close()
 		return nil, err
 	}
 	var text strings.Builder
@@ -207,6 +263,18 @@ func (d *dispatcher) call(ctx context.Context, op string, args json.RawMessage) 
 		}
 		d.issued[handed.Confirm] = true
 	}
+	if op == "update_artifact" && asked.Archived != nil && *asked.Archived {
+		// Every artifact asked for, archived or not: one that failed was not deleted
+		// either, and is not deletable without a confirmation.
+		if d.archived == nil {
+			d.archived = map[string]bool{}
+		}
+		for _, id := range append([]string{asked.ID}, asked.IDs...) {
+			if id != "" {
+				d.archived[id] = true
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -217,6 +285,7 @@ func (d *dispatcher) close() {
 	if d.session != nil {
 		d.session.Close()
 	}
+	d.client, d.session = nil, nil
 }
 
 // codeResult is search's or execute's answer: what the code returned (a string as itself,
