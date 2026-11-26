@@ -226,7 +226,7 @@ func TestReactCompiler(t *testing.T) {
 func TestMCPInitializeAndTools(t *testing.T) {
 	h := testServer(t)
 	call := func(body string) map[string]any {
-		r := httptest.NewRequest("POST", "http://127.0.0.1:8080/mcp", bytes.NewBufferString(body))
+		r := httptest.NewRequest("POST", "http://127.0.0.1:8080/mcp?mode=tools", bytes.NewBufferString(body))
 		r.RemoteAddr = "127.0.0.1:22"
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Accept", "application/json, text/event-stream")
@@ -308,7 +308,7 @@ func TestProxyOriginAdvertisedAsHTTPS(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(csp, base+"/vendor/") || !strings.Contains(w.Body.String(), `src="`+base+`/vendor/react.js"`) {
 		t.Fatalf("preview CSP does not use the proxy origin: %d %s", w.Code, csp)
 	}
-	init := proxied("POST", "/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`)
+	init := proxied("POST", "/mcp?mode=tools", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`)
 	if init.Code != 200 || !strings.Contains(init.Body.String(), base+"/api/media") {
 		t.Fatalf("MCP upload URL is not the proxy origin: %d %s", init.Code, init.Body.String())
 	}

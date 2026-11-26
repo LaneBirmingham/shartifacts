@@ -167,7 +167,7 @@ claude mcp add --transport http --scope user shartifacts <URL> --header "Authori
 
 For Codex, the token goes in an environment variable that Codex reads (`--bearer-token-env-var SHARTIFACTS_TOKEN`), which the person must also export in their shell profile; the person can instead use **Connect an agent** in the workspace, which makes a token and shows the commands with it filled in.
 
-Then prove that it works end to end: create a small artifact through the MCP tools (for example a one-screen "Hello from <agent>" HTML page), give the person its link, and delete it afterwards if they don't want it.
+Then prove that it works end to end: create a small artifact through MCP (in code mode, one `execute` that calls `shartifacts.create_artifact`; for example a one-screen "Hello from <agent>" HTML page), give the person its link, and delete it afterwards if they don't want it.
 
 ## 8. Hand over
 

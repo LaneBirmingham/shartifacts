@@ -188,7 +188,7 @@ func recentVersions(view map[string]any, a store.App, n int) {
 // deploy), and manage_app operates it (promote, update, restart, call, share, delete).
 // base is the address the agent connected through (the guide's curl examples, call); links
 // is where the URLs it hands to people point (linkBase).
-func (s *Server) addAppTools(m *mcp.Server, base, links string) {
+func (s *Server) addAppTools(m *toolset, base, links string) {
 	type GetInput struct {
 		ID      string   `json:"id,omitempty"`
 		Guide   bool     `json:"guide,omitempty" jsonschema:"Read it before the first deploy"`
@@ -199,7 +199,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Tail    int      `json:"tail,omitempty" jsonschema:"With logs: most recent lines (default 200)"`
 		All     bool     `json:"all_versions,omitempty" jsonschema:"List every version; by default the newest 10, plus the live one and versions links pin"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go, Rust or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: the newest versions (status, notes, errors), live version, how far back rollback reaches, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "get_app", Description: "Read apps (full-stack micro frontends: React/TypeScript frontend, Go, Rust or prebuilt binary backend). guide:true returns how to build one for this server. No id lists apps and the runtime. With an id: the newest versions (status, notes, errors), live version, how far back rollback reaches, URLs, env names and share links; optionally a version's files, file contents and logs. latest is the base_version deploy_app needs."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
 		if in.ID == "" {
 			if in.Guide {
 				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s.appGuide(ctx, base)}}}, nil, nil
@@ -269,7 +269,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Note        string            `json:"note,omitempty"`
 		Promote     *bool             `json:"promote,omitempty" jsonschema:"Make it live once it builds (default true); false stages it for preview"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "deploy_app", Description: "Ship code: without an id, create an app with its first version; with one, deploy a new version. Each version is built, its backend started once, and (by default) made live. Prefer merge with edits or changed files for small changes. Returns the version's status (error and build log on failure) and its URLs."}, func(ctx context.Context, req *mcp.CallToolRequest, in DeployInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "deploy_app", Description: "Ship code: without an id, create an app with its first version; with one, deploy a new version. Each version is built, its backend started once, and (by default) made live. Prefer merge with edits or changed files for small changes. Returns the version's status (error and build log on failure) and its URLs."}, func(ctx context.Context, req *mcp.CallToolRequest, in DeployInput) (*mcp.CallToolResult, any, error) {
 		di := deployInput{Files: in.Files, BinaryFiles: in.BinaryFiles, Remove: in.Remove, Edits: in.Edits, Merge: in.Merge, Note: in.Note}
 		promote := in.Promote == nil || *in.Promote
 		if in.ID == "" {
@@ -336,7 +336,7 @@ func (s *Server) addAppTools(m *mcp.Server, base, links string) {
 		Confirm string `json:"confirm,omitempty" jsonschema:"delete: the token the first call returned, after the person confirmed"`
 	}
 	destructive := true
-	mcp.AddTool(m, &mcp.Tool{Name: "manage_app", Description: "Operate an app by op: promote a version (rollback), update its name, description, icon, pin, public-link subdomain (label) or backend env/secrets, restart its backends, call its backend to test an API, share a public link (following live or pinned, optionally read-only) or unshare one, or delete it (only when the person asks: the first call returns a token to confirm with).", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in ManageInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "manage_app", Description: "Operate an app by op: promote a version (rollback), update its name, description, icon, pin, public-link subdomain (label) or backend env/secrets, restart its backends, call its backend to test an API, share a public link (following live or pinned, optionally read-only) or unshare one, or delete it (only when the person asks: the first call returns a token to confirm with).", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in ManageInput) (*mcp.CallToolResult, any, error) {
 		a, err := s.Store.App(in.ID)
 		if err != nil {
 			return nil, nil, err

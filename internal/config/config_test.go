@@ -180,3 +180,15 @@ func TestUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMCPMode(t *testing.T) {
+	if c, err := parse(t, nil, nil); err != nil || c.MCPMode != "code" {
+		t.Fatalf("code mode should be the default: %v %+v", err, c)
+	}
+	if c, err := parse(t, nil, map[string]string{"SHARTIFACTS_MCP_MODE": " Tools "}); err != nil || c.MCPMode != "tools" {
+		t.Fatalf("%v %+v", err, c)
+	}
+	if _, err := parse(t, []string{"-mcp-mode", "classic"}, nil); err == nil || !strings.Contains(err.Error(), "code") {
+		t.Fatalf("an unknown mode should be refused: %v", err)
+	}
+}

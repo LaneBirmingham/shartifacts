@@ -93,7 +93,7 @@ claude mcp add --transport http shartifacts http://192.168.1.20:8080/mcp   # Cla
 codex mcp add shartifacts --url http://192.168.1.20:8080/mcp               # Codex
 ```
 
-Then ask your agent for something, such as *"make me an interactive packing checklist in shartifacts"* or *"build a small expenses app with a Go backend in shartifacts"*. [docs/agents.md](docs/agents.md) covers other clients and the full set of MCP tools.
+Then ask your agent for something, such as *"make me an interactive packing checklist in shartifacts"* or *"build a small expenses app with a Go backend in shartifacts"*. [docs/agents.md](docs/agents.md) covers other clients, code mode (agents get two tools, `search` and `execute`, and write JavaScript against every operation) and the operations themselves.
 
 ## Security in one paragraph
 
@@ -106,7 +106,7 @@ The workspace accepts only loopback, private-network and Tailscale clients, beca
 - [Configuration](docs/configuration.md): every setting
 - [Public sharing](docs/sharing.md): share links, app hostnames, DNS, Caddy, Cloudflare
 - [Reverse proxies](docs/reverse-proxies.md): tailscale serve, nginx, Nginx Proxy Manager, Traefik
-- [Agents and MCP](docs/agents.md): client setup and the MCP tools
+- [Agents and MCP](docs/agents.md): client setup, code mode and the operations
 - [Artifacts](docs/artifacts.md): kinds, editing, search, the archive, the default design, storage
 - [Claude compatibility](docs/claude-compatibility.md): source written for Claude, and the `claude.use` runtime
 - [Media and data files](docs/media.md): uploads, embedding, limits

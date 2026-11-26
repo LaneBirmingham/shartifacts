@@ -75,14 +75,61 @@ In configuration files, add the header next to the URL: `"headers": {"Authorizat
 
 Tokens can do everything in the workspace except manage the password and tokens. Media upload URLs that tools hand out to an agent's shell carry a signed grant instead of the token, which lasts an hour, or until the token is revoked; `list_media` gives a fresh one. When an agent calls an app's backend with its token (`curl …/run/ID/live/api/…`), shartifacts removes the token before the backend sees the request.
 
-The server uses the official Go MCP SDK in stateless JSON-response mode. No SSE subscription or session ID is needed (only a token, once sign-in is on), and it accepts the current protocol and older SDK-negotiated initializations. When it starts, an agent receives short instructions: the artifact kinds, that updates need `base_version`, what sandboxed previews refuse, where the design system and the media upload URL are, how to archive, and where links point. The full guide (libraries and the capability runtime, supporting files, search, comments, tidying up, media, apps and design) is the MCP resource `shartifacts://guide`, which an agent reads with `resources/read` when it needs more. Keeping it out of the instructions, and the tools' field descriptions to the ones whose meaning is not obvious, costs every connected agent about a quarter less context; a resource rather than a tool keeps the tool list as it is. A prompt such as *"make me a packing checklist in shartifacts"* is still enough.
+The server uses the official Go MCP SDK in stateless JSON-response mode. No SSE subscription or session ID is needed (only a token, once sign-in is on), and it accepts the current protocol and older SDK-negotiated initializations. When it starts, an agent receives short instructions: the two tools of [code mode](#code-mode), the artifact kinds, that updates need `base_version`, what sandboxed previews refuse, where the design system and the media upload URL are, how to archive, and where links point. The full guide (libraries and the capability runtime, supporting files, search, comments, tidying up, media, apps and design) is `spec.guide` in `search`, and the MCP resource `shartifacts://guide`, which an agent reads with `resources/read` when it needs more. A prompt such as *"make me a packing checklist in shartifacts"* is still enough.
 
 Links that tools hand out for people use `SHARTIFACTS_PUBLIC_ORIGIN` when it is set, so an agent connected by LAN address still gives you `https://…` links you can open anywhere on your tailnet.
 
-## Tools
+## Code mode
+
+By default an agent gets two tools, `search` and `execute`, rather than one per operation: the design Cloudflare calls [Code Mode](https://blog.cloudflare.com/code-mode-mcp/). Each takes `code`, a JavaScript async arrow function. `search` runs it against a spec of every operation; `execute` runs it against the operations themselves, as methods of `shartifacts`. One `execute` can chain calls, loop over results and filter them, and returns only what the function returns, so neither the operations' descriptions nor their intermediate results pass through the agent's context. Connecting costs an agent about 1,000 tokens (the two tools and the instructions), where the 18 tools of tools mode cost about 5,500.
+
+**search** sees `spec`:
+
+- `spec.operations`: each operation by name (the table below), with `description`, `signature` (a TypeScript declaration of its input, field descriptions as doc comments), `input` (its JSON Schema, with nothing left to resolve) and `destructive` (on `delete_artifact` and `manage_app`).
+- `spec.guide`: the full guide, as an array of paragraphs.
+
+```js
+async () => spec.operations.update_artifact.signature
+async () => spec.guide.filter((p) => /upload/i.test(p))
+```
+
+**execute** sees `shartifacts`, whose methods are the operations. Each takes one object of arguments and resolves to the operation's JSON result, or to a string for the ones that answer in text (`get_design_system`, `get_app` with `guide`), and throws an `Error` with the tool's message, and the operation's name as `operation`, when it fails:
+
+```js
+async () => {
+  const a = await shartifacts.get_artifact({ id: "e0a8ac16adfe58c789c35461" });
+  const r = a.revisions[0];
+  return shartifacts.update_artifact({ id: a.id, base_version: r.version, edits: [{ old_str: "socks", new_str: "socks, hat" }] });
+}
+```
+
+An operation is the tool of the same name: `execute` calls it on the connection's own tools-mode server, through an in-process MCP session, so it is validated, signed in and answered exactly as that tool would be.
+
+**Results.** The function's return value comes back as the tool's text (a string as itself, anything else as JSON), followed by what it wrote with `console` as a second text block. When the code throws, does not parse, or runs out of time or memory, the result is an error with the message and stack lines that point at the agent's own code, and lists the operations it had called by then, so the agent knows what it already changed. Code may be statements instead of a function (they run as an async function's body) and may carry TypeScript annotations, which are stripped.
+
+**The sandbox.** Code runs in a child process, the shartifacts binary started again, holding a [goja](https://github.com/dop251/goja) JavaScript runtime. It has no network, files, environment or Node APIs, and source maps are read only from `data:` URLs, never from a path a `sourceMappingURL` comment names (in `eval` and `new Function` they are not read at all); `setTimeout`, `clearTimeout`, `atob` and `btoa` work. Operations are sent back to the server to run. A separate process makes the limits hard and keeps a crash away from the server:
+
+| Limit | Value |
+| --- | --- |
+| JavaScript time per run | 30 s, not counting time spent waiting on operations and timers, so a run can deploy an app or wait on `watch_artifacts` |
+| Whole run | 10 minutes; `/mcp` holds the answer open that long, past the server's usual 5-minute write timeout |
+| Memory | 256 MiB of heap |
+| Operations per run | 1,000; past that, each call throws at once |
+| Runs at once | 4 for `execute` and 4 for `search`, so executes waiting on changes do not hold up a search. A run that waits more than 30 s for its turn is refused as busy |
+| `search` | 1 minute per run |
+| Sizes | An operation's arguments up to 12 MiB (what `/mcp` takes in one request); its result, and the value the code returns, up to 32 MiB |
+| Result | 1 MiB of text; past that it is cut, with a note to return less. Console output: 64 KiB, each line counting its newline |
+
+**Confirmations.** Deleting an artifact still in the library, or an app, takes two calls with the person's say-so in between ([below](#how-agents-work-with-artifacts)). Code cannot answer for them: a confirmation token is refused in the same run that was handed it, and so is deleting an artifact the same run archived (an archived artifact is deleted without a token, because archiving was meant to be the step the person sees). The agent returns what it has, asks, and confirms or deletes in a new `execute`.
+
+**Tools mode.** `SHARTIFACTS_MCP_MODE=tools` offers one tool per operation instead, and a single connection can ask for either by adding `?mode=tools` or `?mode=code` to the URL (`http://192.168.1.20:8080/mcp?mode=tools`). Tools mode suits clients or models that do not write code reliably, and people who want their client to ask before each operation: a client's permission prompt is per tool, so in code mode, approving `execute` approves every operation the code calls.
+
+## Operations
+
+In code mode these are methods of `shartifacts` in `execute`; in tools mode, tools of the same names.
 
 
-| Tool                 | Input                                                                                              | Result                                                               |
+| Operation            | Input                                                                                              | Result                                                               |
 | -------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `list_artifacts`     | optional `limit` (default 50, max 200), `cursor`, `archived` (`exclude`/`include`/`only`)          | The library, most recently updated first: titles, types, IDs, versions, descriptions, tags, pins, open comment count, `archived_at` on archived ones; `total`, `archived` (how many are in the archive, when it is left out), and `next_cursor` for the next page |
 | `search_artifacts`   | `query`, optional `sort` (`relevance`/`updated`/`oldest`/`created`/`title`), `limit`, `archived`   | Ranked matches with an excerpt each, and `did_you_mean` for typos; the archive only when `archived` (or `is:archived`) asks |

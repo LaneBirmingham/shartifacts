@@ -81,7 +81,7 @@ func (s *Server) portRoutes(mux *http.ServeMux) {
 // addPortsTool gives agents the registry. It is a tool of its own because no other fits:
 // the app tools manage shartifacts apps, whose backends never need a port from here, and
 // this is about machines and services outside shartifacts altogether.
-func (s *Server) addPortsTool(m *mcp.Server, agent string) {
+func (s *Server) addPortsTool(m *toolset, agent string) {
 	type PortsInput struct {
 		Op       string `json:"op,omitempty" jsonschema:"list (default), claim or release"`
 		Host     string `json:"host,omitempty" jsonschema:"The machine, as the registry names it: list returns the hosts in use, so reuse a name rather than registering one machine twice. With list, only this host"`
@@ -92,7 +92,7 @@ func (s *Server) addPortsTool(m *mcp.Server, agent string) {
 		Owner    string `json:"owner,omitempty" jsonschema:"claim: who looks after it (default: this agent's token name)"`
 		Note     string `json:"note,omitempty"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "ports", Description: "The network's port registry: which ports services use on each machine here, kept by the agents and people who deploy them. Before publishing a port (a Docker container, a dev server, anything that listens), list the host's claims and claim one; a claim without port takes the lowest free one at or above from, atomically. Claiming again with the same service updates it; a port another service holds is refused with its holder and the next free port. Release a claim when you remove its service. The registry knows only what was claimed, so also check the machine itself when you can (ss -ltnup, docker ps). App backends need none: they listen on $PORT."}, func(ctx context.Context, req *mcp.CallToolRequest, in PortsInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "ports", Description: "The network's port registry: which ports services use on each machine here, kept by the agents and people who deploy them. Before publishing a port (a Docker container, a dev server, anything that listens), list the host's claims and claim one; a claim without port takes the lowest free one at or above from, atomically. Claiming again with the same service updates it; a port another service holds is refused with its holder and the next free port. Release a claim when you remove its service. The registry knows only what was claimed, so also check the machine itself when you can (ss -ltnup, docker ps). App backends need none: they listen on $PORT."}, func(ctx context.Context, req *mcp.CallToolRequest, in PortsInput) (*mcp.CallToolResult, any, error) {
 		switch in.Op {
 		case "", "list":
 			list, err := s.Store.Ports(in.Host)

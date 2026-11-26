@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/store"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -120,9 +121,36 @@ func rawJSON(v map[string]any) json.RawMessage {
 	return b
 }
 
+// toolset is the tools one connection is built with. They are always registered on a server
+// of their own, which is the classic tool list; code mode keeps that server out of sight,
+// calls its tools as execute's operations, and describes them in search's spec from the
+// schemas kept here.
+type toolset struct {
+	server *mcp.Server
+	ops    []operation
+}
+
+type operation struct {
+	tool  *mcp.Tool
+	input *jsonschema.Schema
+}
+
+// addTool registers a tool as mcp.AddTool does, inferring its input schema the same way,
+// and keeps that schema: unlike one read back from tools/list, it remembers the order of
+// the fields, which the spec's TypeScript follows.
+func addTool[In any](ts *toolset, t *mcp.Tool, h mcp.ToolHandlerFor[In, any]) {
+	schema, err := jsonschema.For[In](&jsonschema.ForOptions{})
+	if err != nil {
+		panic(fmt.Sprintf("tool %q: %v", t.Name, err))
+	}
+	t.InputSchema = schema
+	mcp.AddTool(ts.server, t, h)
+	ts.ops = append(ts.ops, operation{t, schema})
+}
+
 // mcpServer builds the server for one request; agent is the name of the token that signed
-// it in, if one did.
-func (s *Server) mcpServer(baseURL, uploadPath, agent string) *mcp.Server {
+// it in, if one did, and mode is the tool list it gets (mcpMode).
+func (s *Server) mcpServer(baseURL, uploadPath, agent, mode string) *mcp.Server {
 	claudeNote := ""
 	if s.Claude != nil {
 		claudeNote = "\nArtifacts can call Claude with await window.claude.complete(prompt) (or an array of {role, content} messages); it resolves to the reply text.\n"
@@ -153,9 +181,9 @@ Media (video, audio, images, WebVTT; MP4 H.264/AAC or WebM preferred) and data f
 
 To hand someone a zip or any other file: upload it with ?name=FILE and Content-Type application/zip, or application/octet-stream for anything else (max 256 MiB), then create_artifact with kind file, a title, and the returned /media/ URL as content. It shows as a page with a Download button, and update_artifact with another URL adds a version. share:true on create_artifact or update_artifact returns share_url, a public read-only link, and download_url, the file itself; use it only when the person wants a link for people outside the network, and revoke links in the workspace.
 
-Apps are full-stack micro frontends shown as tabs on the home page: a React/TypeScript frontend and an optional Go (or prebuilt Rust) backend with its own data, deployed as numbered versions you can preview, promote and roll back, and shared through public links. Three tools: get_app (guide:true first: how to build one here), deploy_app (create, then ship versions) and manage_app (promote, update, restart, call, share, delete).
+Apps are full-stack micro frontends shown as tabs on the home page: a React/TypeScript frontend and an optional Go (or prebuilt Rust) backend with its own data, deployed as numbered versions you can preview, promote and roll back, and shared through public links. Use get_app (guide:true first: how to build one here), deploy_app (create, then ship versions) and manage_app (promote, update, restart, call, share, delete).
 
-Ports: the ports tool is the network's port registry, a ledger of which ports services use on each machine here. Before you publish a port anywhere on the network (a Docker container, a dev server, anything that listens), list the host's claims (reuse a host name from hosts) and claim the port, or claim without port to get the lowest free one at or above from; release it when you remove the service. It knows only what was claimed, so check the machine too when you can. App backends never need one: they listen on $PORT.
+Ports: ports is the network's port registry, a ledger of which ports services use on each machine here. Before you publish a port anywhere on the network (a Docker container, a dev server, anything that listens), list the host's claims (reuse a host name from hosts) and claim the port, or claim without port to get the lowest free one at or above from; release it when you remove the service. It knows only what was claimed, so check the machine too when you can. App backends never need one: they listen on $PORT.
 
 Before updating, get_artifact for the latest base_version. For small changes send edits (old_str/new_str copied exactly from the latest source) instead of resending content. Give people links on ` + links + `, e.g. ` + links + `/a/{id}, even if you connected through another address; the upload URL below is for your shell, not for people.
 
@@ -164,8 +192,14 @@ New visual artifacts use the get_design_system default. Explicit user design ins
 	// The summary is what an agent must know before its first call: what it can make, how
 	// not to lose an edit, what previews refuse, whose design to use, how to tidy up and
 	// where uploads go. Everything else is one resources/read away.
+	// In code mode the operations below are methods in execute, not tools, and search reads
+	// the guide too.
+	codeLine, guideAt := "", "resource "+guideURI
+	if mode == mcpCode {
+		codeLine, guideAt = codeModeSummary+"\n", "spec.guide in search, or resource "+guideURI
+	}
 	summary := `Create and iterate on artifacts on this local network. Kinds: html, react, markdown, slides, svg, mermaid, code, file.
-Before updating, get_artifact for the latest base_version.
+` + codeLine + `Before updating, get_artifact for the latest base_version.
 Previews are sandboxed: no network, iframes or external URLs (bundled libraries aside); localStorage lasts only for the page, so keep state in window.storage.
 New visual artifacts use get_design_system. Explicit user design instructions always override it. Preserve an existing artifact's design when editing.
 Archive with update_artifact archived:true (ids for many); empty the archive with delete_artifact ids.
@@ -173,18 +207,22 @@ Before publishing a port on a machine here (Docker, a dev server), list and clai
 Upload files with the curl command from list_media. Do not manually transcribe base64.
 To share a zip or other file: upload it with ?name=, then create_artifact kind file with its /media/ URL as content; share:true returns a public link.
 Give people links on ` + links + `, e.g. ` + links + `/a/{id}; the upload URL is for your shell.
-Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media, apps, ports).
+Full guide: ` + guideAt + ` (libraries, capabilities, comments, media, apps, ports).
 ` + uploadLines
-	m := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: appVersion}, &mcp.ServerOptions{Instructions: summary})
-	m.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps, the port registry and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: guideURI, MIMEType: "text/plain", Text: guide}}}, nil
-	})
+	newServer := func() *mcp.Server {
+		srv := mcp.NewServer(&mcp.Implementation{Name: "shartifacts", Version: appVersion}, &mcp.ServerOptions{Instructions: summary})
+		srv.AddResource(&mcp.Resource{URI: guideURI, Name: "guide", Title: "Guide to shartifacts", MIMEType: "text/plain", Description: "How to work here in full: artifact kinds, libraries and capabilities, supporting files, search, comments, archiving, media uploads, apps, the port registry and the design system."}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: guideURI, MIMEType: "text/plain", Text: guide}}}, nil
+		})
+		return srv
+	}
+	m := &toolset{server: newServer()}
 	type ListInput struct {
 		Limit    int    `json:"limit,omitempty"`
 		Cursor   string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
 		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive; include: both"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List the library, most recently updated first, 50 at a time (id, title, kind, version, updated_at, description, icon, tags, pinned, open_comments). Archived artifacts are left out unless archived is only or include (they carry archived_at). total counts those listed, archived counts the archive when it is left out, and next_cursor fetches the next page. To find something specific, search_artifacts is quicker."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "list_artifacts", Description: "List the library, most recently updated first, 50 at a time (id, title, kind, version, updated_at, description, icon, tags, pinned, open_comments). Archived artifacts are left out unless archived is only or include (they carry archived_at). total counts those listed, archived counts the archive when it is left out, and next_cursor fetches the next page. To find something specific, search_artifacts is quicker."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, any, error) {
 		filter, err := store.ParseArchiveFilter(in.Archived)
 		if err != nil {
 			return nil, nil, err
@@ -209,7 +247,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Limit    int    `json:"limit,omitempty"`
 		Archived string `json:"archived,omitempty" jsonschema:"exclude (default): the library; only: just the archive (as is:archived); include: both"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "search_artifacts", Description: "Find artifacts by what they contain or are about, ranked, with a matching excerpt for each and a corrected query when words were misspelt. Use it before list_artifacts when looking for something specific."}, func(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "search_artifacts", Description: "Find artifacts by what they contain or are about, ranked, with a matching excerpt for each and a corrected query when words were misspelt. Use it before list_artifacts when looking for something specific."}, func(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, any, error) {
 		limit := in.Limit
 		if limit <= 0 {
 			limit = 10
@@ -271,7 +309,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		}
 		return out
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "get_artifact", Description: "Read an artifact. Returns the latest revision; version for one revision; history:true for all. runtime_errors lists errors browsers hit in that version."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "get_artifact", Description: "Read an artifact. Returns the latest revision; version for one revision; history:true for all. runtime_errors lists errors browsers hit in that version."}, func(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, any, error) {
 		a, e := s.Store.Get(in.ID)
 		if e != nil {
 			return nil, nil, e
@@ -305,7 +343,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Note         string            `json:"note,omitempty"`
 		Share        bool              `json:"share,omitempty" jsonschema:"Also make a public read-only link (needs a share origin); only when the person wants one for people outside the network. Returns share_url, and download_url for a file"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "create_artifact", Description: "Create an artifact (title, kind, content, optional description, tags, files and note). For kind file, content is the /media/ URL of an uploaded file. Returns id, version, title, kind, and warnings for problems the preview will hit."}, func(ctx context.Context, req *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "create_artifact", Description: "Create an artifact (title, kind, content, optional description, tags, files and note). For kind file, content is the /media/ URL of an uploaded file. Returns id, version, title, kind, and warnings for problems the preview will hit."}, func(ctx context.Context, req *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, any, error) {
 		files := map[string]*string{}
 		for p, body := range in.Files {
 			files[p] = &body
@@ -337,7 +375,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		BaseVersion  int                `json:"base_version,omitempty" jsonschema:"Latest version from get_artifact; needed for every change but archived"`
 		Share        bool               `json:"share,omitempty" jsonschema:"Also make, or find, its public read-only link that follows new versions (needs a share origin); alone it adds no revision. Only when the person wants one for people outside the network. Returns share_url, and download_url for a file"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Omit a field to keep it. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "update_artifact", Description: "Append a revision, or archive or restore without one. Prefer edits for small changes, content for rewrites. Omit a field to keep it. Pass the latest base_version; on conflict re-read. archived:true tidies an artifact (or ids, many at once) into the archive, reversibly; archived:false restores. Returns id, version, title, kind, and any warnings; with ids, done and failed (with why) by id."}, func(ctx context.Context, req *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, any, error) {
 		// Archiving is not a revision: alone, it neither needs nor checks base_version.
 		revising := in.Title != "" || in.Kind != "" || in.Content != nil || in.Edits != nil || in.Files != nil || in.Description != nil ||
 			in.Icon != nil || in.Tags != nil || in.Capabilities != nil || in.Note != ""
@@ -405,7 +443,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		ID string `json:"id"`
 		storageOp
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "artifact_storage", Description: "Read or write the data an artifact keeps with window.storage (op get|set|delete|list; shared for the shared scope)."}, func(ctx context.Context, req *mcp.CallToolRequest, in StorageInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "artifact_storage", Description: "Read or write the data an artifact keeps with window.storage (op get|set|delete|list; shared for the shared scope)."}, func(ctx context.Context, req *mcp.CallToolRequest, in StorageInput) (*mcp.CallToolResult, any, error) {
 		result, e := s.runStorage(in.ID, in.storageOp)
 		if e == nil && result == nil {
 			result = map[string]any{"key": in.Key, "found": false, "shared": in.Shared}
@@ -422,7 +460,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		Limit  int    `json:"limit,omitempty"`
 		Cursor string `json:"cursor,omitempty" jsonschema:"The next_cursor of the previous page, for the page after it"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "list_media", Description: "List uploaded media, newest first, 50 at a time (url, MIME type, size, name; URLs are reusable), filtered by name or type; total counts the matches and next_cursor fetches the next page. Also returns the upload URL and a ready-to-run curl command for local files."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListMediaInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "list_media", Description: "List uploaded media, newest first, 50 at a time (url, MIME type, size, name; URLs are reusable), filtered by name or type; total counts the matches and next_cursor fetches the next page. Also returns the upload URL and a ready-to-run curl command for local files."}, func(ctx context.Context, req *mcp.CallToolRequest, in ListMediaInput) (*mcp.CallToolResult, any, error) {
 		items, err := s.Store.ListMedia()
 		if err != nil {
 			return nil, nil, err
@@ -449,7 +487,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		type BeginMediaInput struct {
 			MIMEType string `json:"mime_type"`
 		}
-		mcp.AddTool(m, &mcp.Tool{Name: "begin_media_upload", Description: "Begin a chunked base64 upload (programmatic clients only; shells use list_media). Upload URL: " + info.UploadURL}, func(ctx context.Context, req *mcp.CallToolRequest, in BeginMediaInput) (*mcp.CallToolResult, any, error) {
+		addTool(m, &mcp.Tool{Name: "begin_media_upload", Description: "Begin a chunked base64 upload (programmatic clients only; shells use list_media). Upload URL: " + info.UploadURL}, func(ctx context.Context, req *mcp.CallToolRequest, in BeginMediaInput) (*mcp.CallToolResult, any, error) {
 			u, e := s.Store.BeginMediaUpload(in.MIMEType)
 			return nil, struct {
 				store.MediaUpload
@@ -463,7 +501,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 			Data     string `json:"data_base64" jsonschema:"Base64 of <=1048576 bytes"`
 			Final    bool   `json:"final"`
 		}
-		mcp.AddTool(m, &mcp.Tool{Name: "upload_media_chunk", Description: "Append a chunk at the returned offset. final:true commits and returns {id,url,mime_type,size}; otherwise the next offset."}, func(ctx context.Context, req *mcp.CallToolRequest, in ChunkInput) (*mcp.CallToolResult, any, error) {
+		addTool(m, &mcp.Tool{Name: "upload_media_chunk", Description: "Append a chunk at the returned offset. final:true commits and returns {id,url,mime_type,size}; otherwise the next offset."}, func(ctx context.Context, req *mcp.CallToolRequest, in ChunkInput) (*mcp.CallToolResult, any, error) {
 			if len(in.Data) > base64.StdEncoding.EncodedLen(store.MediaChunkSize) {
 				return nil, nil, fmt.Errorf("chunk exceeds 1 MiB; split it before base64 encoding")
 			}
@@ -476,7 +514,7 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		})
 	}
 
-	mcp.AddTool(m, &mcp.Tool{Name: "get_design_system", Description: "Get the default artifact design: rules plus an HTML starter that embeds the shared CSS."}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "get_design_system", Description: "Get the default artifact design: rules plus an HTML starter that embeds the shared CSS."}, func(ctx context.Context, req *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, any, error) {
 		css, e := fs.ReadFile(s.Web, "design-system.css")
 		if e != nil {
 			return nil, nil, fmt.Errorf("design system unavailable: %w", e)
@@ -485,5 +523,8 @@ Full guide: resource ` + guideURI + ` (libraries, capabilities, comments, media,
 		// Plain text, not JSON: avoids escaping the stylesheet and sending it twice (content + structuredContent).
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: designRules + "\n\nhtml_starter:\n" + starter}}}, nil, nil
 	})
-	return m
+	if mode == mcpTools {
+		return m.server
+	}
+	return s.codeServer(newServer(), m, guide)
 }

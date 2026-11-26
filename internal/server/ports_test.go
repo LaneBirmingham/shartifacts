@@ -98,7 +98,7 @@ func TestPortRegistryAccess(t *testing.T) {
 	if w := call(h, "GET", "/api/ports", "", "Cookie", owner); w.Code != 200 || !strings.Contains(w.Body.String(), "grafana") {
 		t.Fatalf("list in a signed-in browser: %d %s", w.Code, w.Body)
 	}
-	mcp := call(h, "POST", "/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ports","arguments":{"op":"claim","host":"myserver","from":9000,"service":"loki"}}}`, "Accept", "application/json, text/event-stream", "Authorization", bearer)
+	mcp := call(h, "POST", "/mcp?mode=tools", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ports","arguments":{"op":"claim","host":"myserver","from":9000,"service":"loki"}}}`, "Accept", "application/json, text/event-stream", "Authorization", bearer)
 	if mcp.Code != 200 || !strings.Contains(mcp.Body.String(), `"owner":"Codex on my laptop"`) {
 		t.Fatalf("claim over MCP with a token: %d %s", mcp.Code, mcp.Body)
 	}

@@ -6,8 +6,10 @@
 main.go                 starts the server (or the runner sidecar) from internal/config
 internal/config/        flags and SHARTIFACTS_* variables, validation, the operating mode
 internal/server/        HTTP: the network guard (server.go, forwarded.go), workspace API,
-                        MCP tools (mcp.go, agent.go, apps_mcp.go), previews, share links
-                        (share.go), apps (apps*.go), the claude.use runtime, search API
+                        MCP operations (mcp.go, agent.go, apps_mcp.go) and code mode's
+                        search/execute (codemode.go), previews, share links (share.go),
+                        apps (apps*.go), the claude.use runtime, search API
+internal/codemode/      runs agents' JavaScript for code mode in a sandboxed child process
 internal/store/         the data folder: artifacts, revisions, media, db, apps, shares
 internal/search/        the full-text index behind library search
 internal/runner/        builds and runs app backends, here or in the runner sidecar

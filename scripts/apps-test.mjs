@@ -59,7 +59,7 @@ const seeThroughScrollers = (page) =>
   });
 try {
   client = new Client({ name: "apps-test", version: "1" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp")));
+  await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp?mode=tools")));
   const tools = (await client.listTools()).tools.map((t) => t.name);
   for (const t of ["get_app", "deploy_app", "manage_app"]) assert.ok(tools.includes(t), `tool ${t}`);
   for (const t of ["app_guide", "create_app", "promote_app", "call_app"]) assert.ok(!tools.includes(t), `retired tool ${t}`);
@@ -316,7 +316,7 @@ try {
   await client.close().catch(() => {});
   const { token } = await page.evaluate(() => fetch("/api/auth/tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"name":"apps test"}' }).then((r) => r.json()));
   client = new Client({ name: "apps-test", version: "1" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp"), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp?mode=tools"), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   // Public links never ask.
   await visitor.goto(shareURL);
   await expect(visitor.getByText("Signed in")).toBeVisible();

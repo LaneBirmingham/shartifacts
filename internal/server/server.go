@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/auth"
+	"github.com/LaneBirmingham/shartifacts/internal/codemode"
 	"github.com/LaneBirmingham/shartifacts/internal/runner"
 	"github.com/LaneBirmingham/shartifacts/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -63,6 +64,10 @@ type Server struct {
 	Auth *auth.Store
 	// NoChunkUpload hides begin_media_upload/upload_media_chunk (shell agents use the curl upload).
 	NoChunkUpload bool
+	// MCPMode is the tool list /mcp offers when a connection does not pick one with ?mode=:
+	// "code" (or empty), the search and execute tools of code mode, or "tools", one tool per
+	// operation (codemode.go).
+	MCPMode string
 	// Claude answers window.claude.complete and the sample capability; nil leaves it off.
 	Claude *Claude
 	// Connectors are the MCP servers the mcp capability reaches.
@@ -91,6 +96,10 @@ type Server struct {
 	handler       http.Handler
 	handlerOnce   sync.Once
 	search        searchCache
+	// code runs execute's code and codeSearch search's, in separate pools so that
+	// executes waiting on changes cannot keep a search from its turn.
+	code       codemode.Runner
+	codeSearch codemode.Runner
 }
 type draft struct {
 	Revision store.Revision
@@ -306,10 +315,21 @@ func (s *Server) build() http.Handler {
 		s.renderPreview(w, r, d.Revision, "", "")
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
-	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		scheme := s.clientScheme(r)
-		return s.mcpServer(scheme+"://"+r.Host, s.uploadPath(r), agentName(r))
-	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 12 << 20}))
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		mode, _ := s.mcpMode(r)
+		return s.mcpServer(s.clientScheme(r)+"://"+r.Host, s.uploadPath(r), agentName(r), mode)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 12 << 20})
+	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := s.mcpMode(r); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		// The answer is written when the call ends, which for an execute can be after the
+		// server's write timeout. Writers without deadlines (a test recorder) have none to
+		// extend.
+		http.NewResponseController(w).SetWriteDeadline(time.Now().Add(mcpWriteTime()))
+		mcpHandler.ServeHTTP(w, r)
+	})
 	files := http.FileServer(http.FS(s.Web))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" && r.Method != "HEAD" {

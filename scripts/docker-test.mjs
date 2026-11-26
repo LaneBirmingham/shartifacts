@@ -68,6 +68,21 @@ try {
   const vendor = await fetch(base + "/vendor/react.js");
   assert.ok(vendor.ok);
   assert.ok((await vendor.text()).length > 100000);
+  // Code mode runs an agent's JavaScript in a child process, which must start in the image
+  // as its non-root user with every capability dropped.
+  const executed = await (
+    await fetch(base + "/mcp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute", arguments: { code: `async () => (await shartifacts.get_artifact({id: ${JSON.stringify(a.id)}})).revisions[0].title` } },
+      }),
+    })
+  ).json();
+  assert.equal(executed.result?.content?.[0]?.text, "Container counter", JSON.stringify(executed));
   const health = docker([
     "exec",
     name,

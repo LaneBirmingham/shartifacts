@@ -230,10 +230,31 @@ try {
     base + `/api/artifacts/${id}/download?version=2`,
   );
   assert.equal(await download.text(), updated);
-  // A separate, real MCP client exercises discovery, source reads, creation, update, and conflicts.
+  // By default agents get code mode's two tools, and one execute does the work of several
+  // tool calls: here it reads back the artifact the browser just restored.
+  const coder = new Client({ name: "shartifacts-code-mode-test", version: "1.0.0" });
+  await coder.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp")));
+  assert.deepEqual((await coder.listTools()).tools.map((t) => t.name).sort(), ["execute", "search"]);
+  const signature = await coder.callTool({ name: "search", arguments: { code: "async () => spec.operations.update_artifact.signature" } });
+  assert.match(signature.content[0].text, /base_version\?: number;/);
+  const executed = await coder.callTool({
+    name: "execute",
+    arguments: { code: `async () => {
+      const v2 = await shartifacts.get_artifact({id: ${JSON.stringify(id)}, version: 2})
+      const latest = (await shartifacts.list_artifacts()).artifacts.find(a => a.id === v2.id).version
+      console.log("read", v2.id)
+      return {latest, same: v2.revisions[0].content === ${JSON.stringify(updated)}}
+    }` },
+  });
+  assert.ok(!executed.isError, executed.content[0].text);
+  assert.deepEqual(JSON.parse(executed.content[0].text), { latest: 3, same: true });
+  assert.equal(executed.content[1].text, "console:\nread " + id);
+  await coder.close();
+  // A separate, real MCP client exercises every tool of the classic list (mode=tools):
+  // discovery, source reads, creation, update, and conflicts.
   client = new Client({ name: "shartifacts-browser-test", version: "1.0.0" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(base + "/mcp")),
+    new StreamableHTTPClientTransport(new URL(base + "/mcp?mode=tools")),
   );
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((t) => t.name).sort(), [
@@ -1320,9 +1341,12 @@ export default function Sales(){ const [total, setTotal] = useState('…');
   await page.locator("#connect-dialog [data-close]").click();
   const agent = new Client({ name: "token-test", version: "1" });
   await agent.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp"), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
-  assert.ok((await agent.callTool({ name: "list_artifacts", arguments: {} })).structuredContent.artifacts.length > 0);
+  // Code mode's operations run with the token's sign-in.
+  const run = await agent.callTool({ name: "execute", arguments: { code: "async () => ({count: (await shartifacts.list_artifacts()).artifacts.length, upload: (await shartifacts.list_media()).upload_url})" } });
+  assert.ok(!run.isError, run.content[0].text);
+  const { count: agentListed, upload: uploadURL } = JSON.parse(run.content[0].text);
+  assert.ok(agentListed > 0);
   // The agent's shell uploads with the URL list_media hands it, without the token.
-  const uploadURL = (await agent.callTool({ name: "list_media", arguments: {} })).structuredContent.upload_url;
   assert.match(uploadURL, /\/api\/media\/[^/]+$/);
   assert.equal((await fetch(uploadURL + "?name=hello.txt", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "hello" })).status, 201);
   // Another browser must sign in, and then lands where it was going.
