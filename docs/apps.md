@@ -31,7 +31,7 @@ shartifacts.json      optional: {"frontend": {"root": "dist", "spa": true},
                                              | "binary": "server/app", "network": false}}
 ```
 
-**Deploying.** In the hub: **New app** starts from the notes template (React + Go, or the same app with a Rust backend) or an archive; each tab's **Versions** panel deploys an archive, previews any version, promotes or rolls back, and downloads source. Agents use three MCP tools: `get_app` (with `guide: true` first), `deploy_app` and `manage_app` (below). Shell agents can upload a zip or tar.gz (one top-level folder is unwrapped):
+**Deploying.** In the hub: **New app** starts from the notes template (React + Go, or the same app with a Rust backend) or an archive; each tab's **Versions** panel deploys an archive, previews any version, promotes or rolls back, and downloads source. Agents use three MCP operations: `get_app` (with `guide: true` first), `deploy_app` and `manage_app` (below). Shell agents can upload a zip or tar.gz (one top-level folder is unwrapped):
 
 ```sh
 curl --fail-with-body -H 'Content-Type: application/zip' --data-binary @app.zip \

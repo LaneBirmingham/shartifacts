@@ -45,7 +45,7 @@ for (let i = 0; ; i++) {
   await sleep(100);
 }
 const client = new Client({ name: "seed", version: "1" });
-await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp")));
+await client.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp?mode=tools")));
 const tool = async (name, args = {}) => {
   const res = await client.callTool({ name, arguments: args });
   assert.ok(!res.isError, `${name}: ${JSON.stringify(res.content).slice(0, 1000)}`);
@@ -130,7 +130,8 @@ async function frameHas(page, texts) {
 
 // runAgent starts headless Claude Code and timestamps each stream-json event as it arrives.
 function runAgent(prompt) {
-  const mcp = JSON.stringify({ mcpServers: { shartifacts: { type: "http", url: `${base}/mcp` } } });
+  // MCP_MODE=tools measures the agent with one tool per operation instead of code mode.
+  const mcp = JSON.stringify({ mcpServers: { shartifacts: { type: "http", url: `${base}/mcp${process.env.MCP_MODE ? "?mode=" + process.env.MCP_MODE : ""}` } } });
   const args = ["-p", prompt, "--setting-sources", "project", "--tools", "", "--strict-mcp-config", "--mcp-config", mcp, "--allowedTools", "mcp__shartifacts", "--no-session-persistence", "--output-format", "stream-json", "--verbose", ...(MODEL ? ["--model", MODEL] : [])];
   const t0 = now();
   const proc = spawn("claude", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });

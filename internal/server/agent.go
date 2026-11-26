@@ -96,13 +96,13 @@ func (s *Server) runDBOp(id string, op dbOp) (any, error) {
 	return nil, errors.New("op must be get, list, query, set, update, str_replace or delete")
 }
 
-func (s *Server) addAgentTools(m *mcp.Server) {
+func (s *Server) addAgentTools(m *toolset) {
 	type DBInput struct {
 		ID string `json:"id"`
 		dbOp
 		Batch []dbOp `json:"batch,omitempty" jsonschema:"Several operations, applied in order (op: batch)"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "artifact_db", Description: "Read and write the document store an artifact's page uses through claude.use(\"db\") (op get|list|query|set|update|str_replace|delete|batch). Agents see shared data, never people's private data/users/<id>/ documents."}, func(ctx context.Context, req *mcp.CallToolRequest, in DBInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "artifact_db", Description: "Read and write the document store an artifact's page uses through claude.use(\"db\") (op get|list|query|set|update|str_replace|delete|batch). Agents see shared data, never people's private data/users/<id>/ documents."}, func(ctx context.Context, req *mcp.CallToolRequest, in DBInput) (*mcp.CallToolResult, any, error) {
 		if in.Op != "batch" {
 			out, e := s.runDBOp(in.ID, in.dbOp)
 			if e != nil {
@@ -128,7 +128,7 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 		Confirm     string   `json:"confirm,omitempty" jsonschema:"The token the first call returned, after the person confirmed"`
 	}
 	destructive := true
-	mcp.AddTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete artifacts with their versions, data, assets, comments and share links. Archived artifacts are deleted at once: pass ids (or id) to empty the archive, and get done and failed by id; one not archived fails rather than being deleted. An artifact still in the library needs id, base_version and the person's say-so: the first call returns a confirmation token to show them, then call again with confirm. To tidy up reversibly, archive with update_artifact instead.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "delete_artifact", Description: "Permanently delete artifacts with their versions, data, assets, comments and share links. Archived artifacts are deleted at once: pass ids (or id) to empty the archive, and get done and failed by id; one not archived fails rather than being deleted. An artifact still in the library needs id, base_version and the person's say-so: the first call returns a confirmation token to show them, then call again with confirm. To tidy up reversibly, archive with update_artifact instead.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, any, error) {
 		if in.IDs != nil {
 			if in.ID != "" {
 				return nil, nil, errors.New("send id or ids, not both")
@@ -185,7 +185,7 @@ func (s *Server) addAgentTools(m *mcp.Server) {
 		Kinds []string `json:"kinds,omitempty" jsonschema:"version, comments, db, assets, archived (detail true or false) or deleted; omit for all"`
 		Wait  int      `json:"wait_seconds,omitempty" jsonschema:"Wait up to this long (max 50) for the next event when there is none yet"`
 	}
-	mcp.AddTool(m, &mcp.Tool{Name: "watch_artifacts", Description: "Learn what changed: new versions (yours or the person's), comments, page data, assets, archiving and deletion. Returns events after the cursor, waiting up to wait_seconds for one; pass the returned cursor next time."}, func(ctx context.Context, req *mcp.CallToolRequest, in WatchInput) (*mcp.CallToolResult, any, error) {
+	addTool(m, &mcp.Tool{Name: "watch_artifacts", Description: "Learn what changed: new versions (yours or the person's), comments, page data, assets, archiving and deletion. Returns events after the cursor, waiting up to wait_seconds for one; pass the returned cursor next time."}, func(ctx context.Context, req *mcp.CallToolRequest, in WatchInput) (*mcp.CallToolResult, any, error) {
 		ids, kinds := map[string]bool{}, map[string]bool{}
 		for _, id := range in.IDs {
 			ids[id] = true

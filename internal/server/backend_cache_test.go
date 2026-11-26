@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/LaneBirmingham/shartifacts/internal/codemode"
 	"github.com/LaneBirmingham/shartifacts/internal/runner"
 )
 
@@ -21,6 +22,10 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// Code mode re-executes the binary to run code; in tests the binary is this one.
+	if len(os.Args) > 1 && os.Args[1] == codemode.ChildArg {
+		codemode.Child()
+	}
 	code := m.Run()
 	if backendCacheDir != "" {
 		os.RemoveAll(backendCacheDir)

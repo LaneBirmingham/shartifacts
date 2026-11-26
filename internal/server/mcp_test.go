@@ -14,7 +14,7 @@ import (
 
 func mcpRequest(t *testing.T, h http.Handler, origin, body string) map[string]any {
 	t.Helper()
-	r := httptest.NewRequest("POST", origin+"/mcp", strings.NewReader(body))
+	r := httptest.NewRequest("POST", origin+"/mcp?mode=tools", strings.NewReader(body))
 	r.RemoteAddr = "192.168.1.9:1234"
 	if strings.HasPrefix(origin, "https:") {
 		r.TLS = &tls.ConnectionState{}

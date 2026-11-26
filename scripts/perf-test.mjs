@@ -63,7 +63,7 @@ for (let i = 0; ; i++) {
 async function connect(name) {
   const c = new Client({ name, version: "1" });
   const t = now();
-  await c.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp")));
+  await c.connect(new StreamableHTTPClientTransport(new URL(base + "/mcp?mode=tools")));
   return { client: c, connectMs: now() - t };
 }
 const { client, connectMs } = await connect("perf");

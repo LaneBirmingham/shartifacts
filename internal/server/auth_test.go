@@ -404,7 +404,7 @@ func TestAgentTokens(t *testing.T) {
 	if w := call(h, "POST", "/mcp", init, "Accept", "application/json, text/event-stream"); w.Code != 401 || !strings.Contains(w.Header().Get("WWW-Authenticate"), "Bearer") || !strings.Contains(w.Body.String(), "agent token") {
 		t.Fatalf("MCP without a token: %d %s", w.Code, w.Body)
 	}
-	list := call(h, "POST", "/mcp", `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`, "Accept", "application/json, text/event-stream", "Authorization", bearer)
+	list := call(h, "POST", "/mcp?mode=tools", `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`, "Accept", "application/json, text/event-stream", "Authorization", bearer)
 	if list.Code != 200 {
 		t.Fatalf("MCP with a token: %d %s", list.Code, list.Body)
 	}
@@ -425,6 +425,16 @@ func TestAgentTokens(t *testing.T) {
 		t.Fatalf("tampered grant: %d", w.Code)
 	}
 
+	// Code mode's operations run with the connection's own sign-in: execute with the token
+	// reaches them, and the same request without it is refused before any code runs.
+	execute := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"execute","arguments":{"code":"async () => (await shartifacts.list_media()).upload_url"}}}`
+	if w := call(h, "POST", "/mcp", execute, "Accept", "application/json, text/event-stream", "Authorization", bearer); w.Code != 200 || !strings.Contains(w.Body.String(), "/api/media/") || strings.Contains(w.Body.String(), `"isError":true`) {
+		t.Fatalf("execute with a token: %d %s", w.Code, w.Body)
+	}
+	if w := call(h, "POST", "/mcp", execute, "Accept", "application/json, text/event-stream"); w.Code != 401 {
+		t.Fatalf("execute without a token: %d %s", w.Code, w.Body)
+	}
+
 	// Revoking the token refuses it, and the upload URLs it was given, at once.
 	if w := call(h, "DELETE", "/api/auth/tokens/"+id, "", "Cookie", owner); w.Code != 200 {
 		t.Fatalf("revoke: %d", w.Code)
@@ -438,7 +448,7 @@ func TestAgentTokens(t *testing.T) {
 
 	// An upload URL given to a signed-in browser's MCP request ends when it signs out.
 	browser := cookieOf(t, call(h, "POST", "/api/auth/login", `{"password":"correct horse"}`))
-	list = call(h, "POST", "/mcp", `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`, "Accept", "application/json, text/event-stream", "Cookie", browser)
+	list = call(h, "POST", "/mcp?mode=tools", `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_media","arguments":{}}}`, "Accept", "application/json, text/event-stream", "Cookie", browser)
 	upload = regexp.MustCompile(`"upload_url":"http://127\.0\.0\.1:8080(/api/media/[^"]+)"`).FindStringSubmatch(list.Body.String())
 	if upload == nil {
 		t.Fatalf("no upload grant for a browser: %s", list.Body)

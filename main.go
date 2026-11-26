@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/LaneBirmingham/shartifacts/internal/auth"
+	"github.com/LaneBirmingham/shartifacts/internal/codemode"
 	"github.com/LaneBirmingham/shartifacts/internal/config"
 	"github.com/LaneBirmingham/shartifacts/internal/runner"
 	"github.com/LaneBirmingham/shartifacts/internal/sandbox"
@@ -32,6 +33,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == sandbox.OKArg {
 		return
+	}
+	// Re-executed to run an agent's code for the MCP's code mode.
+	if len(os.Args) > 1 && os.Args[1] == codemode.ChildArg {
+		codemode.Child()
 	}
 	if len(os.Args) > 1 && os.Args[1] == "auth" {
 		os.Exit(authCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
@@ -60,7 +65,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, PrivateAppOrigin: cfg.PrivateAppOrigin, AuthProxy: cfg.AuthProxy, Auth: signIn}
+	app := &server.Server{Store: st, Web: web, AllowedHosts: cfg.AllowedHosts, NoChunkUpload: cfg.NoChunkUpload, MCPMode: cfg.MCPMode, PublicOrigin: cfg.PublicOrigin, ShareOrigin: cfg.ShareOrigin, AppOrigin: cfg.AppOrigin, PrivateAppOrigin: cfg.PrivateAppOrigin, AuthProxy: cfg.AuthProxy, Auth: signIn}
 	for _, line := range cfg.Summary() {
 		log.Print(line)
 	}

@@ -162,7 +162,7 @@ try {
 
   // ---- Claude sampling and connectors ----------------------------------------------
   const port = 19400 + Math.floor(Math.random() * 500);
-  await writeFile(path.join(dir, "connectors.json"), JSON.stringify([{ name: "Library", url: `http://127.0.0.1:${port}/mcp` }]));
+  await writeFile(path.join(dir, "connectors.json"), JSON.stringify([{ name: "Library", url: `http://127.0.0.1:${port}/mcp?mode=tools` }]));
   const claudeBase = await start(port, ["-connectors", path.join(dir, "connectors.json")], { ANTHROPIC_API_KEY: "fake", ANTHROPIC_BASE_URL: `http://127.0.0.1:${fake.address().port}` });
   const s = await post(claudeBase, "/api/artifacts", { title: "S", kind: "html", content: "<!doctype html><output id=o>…</output><script>claude.use('sample').then(s => { window.sample = s; document.getElementById('o').textContent = 'ready' })<\/script>" });
   const sp = await browser.newPage();

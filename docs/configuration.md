@@ -42,6 +42,7 @@ A new password signs every browser out but keeps agent tokens, and `set-password
 | `SHARTIFACTS_CLAUDE_MODEL` | `-claude-model` | `claude-opus-5-5` | The model behind those calls. |
 | `SHARTIFACTS_CONNECTORS` | `-connectors` | | A JSON file of MCP servers that artifacts may call through `claude.use("mcp")`. See [claude-compatibility.md](claude-compatibility.md#connectors). |
 | `SHARTIFACTS_NO_CHUNK_UPLOAD` | `-no-chunk-upload` | `false` | Hides the base64 upload tools from agents, which saves their context when every agent can run `curl`. |
+| `SHARTIFACTS_MCP_MODE` | `-mcp-mode` | `code` | The tools agents get at `/mcp`. `code` gives two, `search` and `execute`, which run JavaScript the agent writes against every operation in a sandbox; `tools` gives one tool per operation. A connection can ask for the other by adding `?mode=tools` or `?mode=code` to the `/mcp` URL. See [agents.md](agents.md#code-mode). |
 
 ## Apps
 

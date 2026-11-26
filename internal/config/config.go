@@ -54,8 +54,11 @@ type Config struct {
 	// proxy that authenticates people itself.
 	AuthProxy     bool
 	NoChunkUpload bool
-	ClaudeModel   string
-	Connectors    string
+	// MCPMode is the tool list /mcp offers by default: "code" (search and execute) or
+	// "tools" (one tool per operation).
+	MCPMode     string
+	ClaudeModel string
+	Connectors  string
 
 	Runner       bool
 	RunnerListen string
@@ -94,6 +97,7 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (*Config, e
 	fs.StringVar(&c.PrivateAppOrigin, "private-app-origin", "", "a wildcard origin giving each app a private address of its own, e.g. https://*.apps.example.com, at the root of which it installs on a phone as an app of its own. It answers only who the workspace answers (LAN, tailnet, loopback, and signed in when sign-in is on), never the internet. Needs wildcard DNS and a certificate (see docs/apps.md)")
 	fs.BoolVar(&c.AuthProxy, "auth-proxy", false, "the reverse proxy in front of the workspace authenticates everyone it forwards (Cloudflare Access, Authelia, oauth2-proxy). Without it, workspace requests a proxy forwards from a public address are refused, because the workspace is for private networks, with or without its own sign-in")
 	fs.BoolVar(&c.NoChunkUpload, "no-chunk-upload", false, "hide the base64 chunked-upload MCP tools to save agent context (the HTTP upload stays available)")
+	fs.StringVar(&c.MCPMode, "mcp-mode", "code", "the tools agents get at /mcp: \"code\" gives two, search and execute, which run JavaScript the agent writes against every operation in a sandbox (Code Mode); \"tools\" gives one tool per operation. A connection can ask for the other with /mcp?mode=code or /mcp?mode=tools")
 	fs.StringVar(&c.ClaudeModel, "claude-model", "claude-opus-5-5", "model behind window.claude.complete and claude.use(\"sample\"), which are on only when ANTHROPIC_API_KEY is set")
 	fs.StringVar(&c.Connectors, "connectors", "", "JSON file of MCP servers artifacts may call through claude.use(\"mcp\"): [{\"name\", \"url\", \"headers\"}]; credentials stay on this server")
 	fs.BoolVar(&c.Runner, "runner", false, "run as the app runner sidecar: build and run app backends for a shartifacts whose -runner-url points here, and nothing else")
@@ -198,6 +202,11 @@ func originHost(o string) string {
 
 func (c *Config) check() error {
 	var err error
+	switch c.MCPMode = strings.ToLower(strings.TrimSpace(c.MCPMode)); c.MCPMode {
+	case "code", "tools":
+	default:
+		return fmt.Errorf("-mcp-mode %q must be code (search and execute) or tools (one tool per operation)", c.MCPMode)
+	}
 	if c.AppKeepVersions < 1 {
 		return fmt.Errorf("-app-keep-versions %d must be at least 1: the live version always keeps its files, and rollback needs the ones before it", c.AppKeepVersions)
 	}
